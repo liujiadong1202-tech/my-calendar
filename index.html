@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>精准出勤与薪资看板</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .month-card { transition: all 0.2s ease; border-left-width: 4px; }
+        .active-month { border-color: #2563eb !important; background-color: #f8fafc; }
+        .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+        #calendarGrid { min-height: 280px; } 
+        .day-cell { aspect-ratio: 1 / 1; display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 8px; font-size: 0.7rem; border: 1px solid transparent; overflow: hidden; }
+        .day-num { font-weight: 800; font-size: 0.85rem; }
+        .day-tag { font-size: 0.45rem; font-weight: bold; margin-top: -1px; white-space: nowrap; transform: scale(0.9); }
+        
+        .status-work { background: #ffffff; color: #64748b; border-color: #f1f5f9; } 
+        .status-holiday { background: #ffedd5; color: #ea580c; border-color: #fed7aa; } 
+        .status-weekend-off { background: #f8fafc; color: #cbd5e1; } 
+        .status-overtime { background: #dbeafe; color: #2563eb; border-color: #bfdbfe; } 
+        .status-extra { background: #1e40af; color: #ffffff; } 
+        
+        /* 非本月日期：低透明度，但保留颜色信息 */
+        .day-outside { opacity: 0.3; pointer-events: none; }
+        .today-mark { outline: 2px solid #2563eb; outline-offset: 1px; z-index: 10; }
+        
+        .salary-control-group { display: inline-flex; flex-direction: row-reverse; align-items: center; transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
+        #salaryInputWrapper { transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1); max-width: 0; opacity: 0; pointer-events: none; overflow: hidden; display: flex; align-items: center; }
+        #salaryInputWrapper.expanded { max-width: 140px; opacity: 1; pointer-events: auto; margin-right: 12px; padding-right: 12px; border-right: 1px solid #e2e8f0; }
+        .salary-privacy-hidden { display: none !important; }
+        #calendarHeader { cursor: pointer; transition: background 0.2s; border-radius: 8px; padding: 4px 0; }
+        #calendarHeader:hover { background: #f1f5f9; }
+    </style>
+</head>
+<body class="bg-gray-50 text-slate-800 p-4 md:p-8">
+    <div class="max-w-6xl mx-auto">
+        <header class="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-6 bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
+            <div>
+                <h1 class="text-2xl font-black text-slate-900 tracking-tight"><span id="titleYear">2026</span> 出勤助手</h1>
+                <p class="text-slate-400 text-xs font-bold mt-1 uppercase tracking-widest">国务院办公厅法定节假日标准</p>
+            </div>
+            
+            <div class="flex flex-wrap items-center justify-end gap-3 grow">
+                <div class="salary-control-group bg-slate-50 p-2 px-3 rounded-2xl border border-slate-100">
+                    <div class="flex items-center gap-2 shrink-0">
+                        <span class="text-[10px] font-bold text-slate-500 uppercase">薪资展示</span>
+                        <input type="checkbox" id="showSalary" class="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer">
+                    </div>
+                    <div id="salaryInputWrapper">
+                        <div class="flex flex-col items-end">
+                            <span class="text-[10px] font-bold text-slate-400 uppercase leading-none mb-1">月薪基数</span>
+                            <input type="number" id="baseSalary" value="10000" class="bg-transparent border-none text-blue-600 font-black text-sm w-20 focus:ring-0 p-0 outline-none text-right">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-50 p-2 px-4 rounded-2xl border border-slate-100 shrink-0">
+                    <span class="text-[10px] font-bold text-slate-400 block mb-1 uppercase">年份</span>
+                    <select id="yearSelect" class="bg-transparent border-none text-slate-700 font-bold text-sm focus:ring-0 p-0 outline-none cursor-pointer"></select>
+                </div>
+
+                <div class="bg-slate-50 p-2 px-4 rounded-2xl border border-slate-100 shrink-0">
+                    <span class="text-[10px] font-bold text-slate-400 block mb-1 uppercase">出勤模式</span>
+                    <select id="mode" class="bg-transparent border-none text-slate-700 font-bold text-sm focus:ring-0 p-0 outline-none cursor-pointer">
+                        <option value="double">标准双休</option>
+                        <option value="sat">单休 (周六加班)</option>
+                        <option value="sun">单休 (周日加班)</option>
+                        <option value="none">全月无休</option>
+                    </select>
+                </div>
+            </div>
+        </header>
+
+        <div id="annualBillSection" class="bg-slate-900 p-6 md:p-10 rounded-3xl shadow-xl text-white mb-8 overflow-hidden relative">
+            <div class="relative z-10">
+                <div class="flex justify-between items-center mb-8">
+                    <h3 class="text-sm font-bold opacity-50 tracking-widest uppercase flex items-center">
+                        <span class="w-2 h-2 bg-blue-500 rounded-full mr-2"></span> <span id="statYearLabel">2026</span> 年度明细统计
+                    </h3>
+                </div>
+                <div id="annualGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
+                    <div class="salary-related space-y-6">
+                        <div>
+                            <span class="text-[10px] font-bold opacity-40 block mb-1 uppercase">全年预估总收入</span>
+                            <div id="yearTotalIncome" class="text-4xl font-black text-white italic tracking-tighter">¥0</div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4 border-t border-white/10 pt-6">
+                            <div><span class="text-[10px] font-bold opacity-30 block mb-1">基本薪资累计</span><div id="yearBaseSub" class="text-sm font-bold text-slate-300 font-mono">¥0</div></div>
+                            <div><span class="text-[10px] font-bold text-blue-400/60 block mb-1">加班费用累计</span><div id="yearOtSub" class="text-sm font-bold text-blue-400 font-mono">+¥0</div></div>
+                        </div>
+                    </div>
+                    <div class="space-y-6">
+                        <div><span class="text-[10px] font-bold opacity-40 block mb-1 uppercase">全年出勤</span><div id="yearTotalWorkDays" class="text-4xl font-black text-white italic tracking-tighter">0</div></div>
+                        <div class="grid grid-cols-2 gap-4 border-t border-white/10 pt-6">
+                            <div><span class="text-[10px] font-bold text-slate-400 block mb-1">标准工作</span><div id="yearStandardWork" class="text-sm font-bold text-slate-300">0天</div></div>
+                            <div><span class="text-[10px] font-bold text-emerald-400/60 block mb-1">加班出勤</span><div id="yearOvertimeWork" class="text-sm font-bold text-emerald-400">0天</div></div>
+                        </div>
+                    </div>
+                    <div class="space-y-6">
+                        <div><span class="text-[10px] font-bold opacity-40 block mb-1 uppercase">全年休息</span><div id="yearTotalOffDays" class="text-4xl font-black text-orange-400 italic tracking-tighter">0</div></div>
+                        <div class="grid grid-cols-2 gap-4 border-t border-white/10 pt-6">
+                            <div><span class="text-[10px] font-bold text-slate-400 block mb-1">常规周休</span><div id="yearWeekendOff" class="text-sm font-bold text-slate-300">0天</div></div>
+                            <div><span class="text-[10px] font-bold text-orange-400/60 block mb-1">法定节假</span><div id="yearHolidayOff" class="text-sm font-bold text-orange-400">0天</div></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div id="bgYearDisplay" class="absolute -right-8 -bottom-8 text-white opacity-[0.03] font-black text-9xl italic select-none pointer-events-none uppercase">2026</div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            <div class="lg:col-span-5 space-y-6">
+                <div id="detailPanel" class="bg-white p-6 rounded-3xl shadow-lg border border-gray-100 sticky top-10">
+                    <div class="flex flex-col mb-6">
+                        <div class="flex justify-between items-start mb-4">
+                            <h2 id="detailTitle" class="text-xl font-black text-slate-800">月份详情</h2>
+                            <span id="statTotalDays" class="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full uppercase">共 0 天</span>
+                        </div>
+                        <div id="quickStats" class="grid grid-cols-3 gap-2">
+                            <div class="bg-blue-50/50 p-2 rounded-xl border border-blue-100/50 text-center flex flex-col justify-center">
+                                <span class="text-[8px] font-bold text-blue-400 block uppercase italic mb-1">标准工作</span>
+                                <span id="mStatStandardWork" class="text-lg font-black text-blue-700 leading-none">0</span>
+                                <div class="flex items-center justify-center gap-1 mt-1 font-mono text-[9px] font-bold">
+                                    <span id="mStatPureWork" class="text-slate-400" title="平日工作">0</span>
+                                    <span class="text-slate-300">+</span>
+                                    <span id="mStatExtraWork" class="text-blue-600" title="调休补班">0</span>
+                                </div>
+                            </div>
+                            <div id="otCard" class="bg-indigo-50/50 p-2 rounded-xl border border-indigo-100/50 text-center flex flex-col justify-center italic">
+                                <span class="text-[8px] font-bold text-indigo-400 block uppercase mb-1">额外加班</span>
+                                <span id="mStatOvertimeWork" class="text-lg font-black text-indigo-700 leading-none">0</span>
+                                <span class="text-[9px] opacity-0 mt-1">.</span>
+                            </div>
+                            <div class="bg-orange-50/50 p-2 rounded-xl border border-orange-100/50 text-center flex flex-col justify-center">
+                                <span class="text-[8px] font-bold text-orange-400 block uppercase italic mb-1">本月休息</span>
+                                <span id="mStatTotalOff" class="text-lg font-black text-orange-600 leading-none">0</span>
+                                <div class="flex items-center justify-center gap-1 mt-1 font-mono text-[9px] font-bold">
+                                    <span id="mStatWeekendOff" class="text-slate-400" title="周休">0</span>
+                                    <span class="text-slate-300">+</span>
+                                    <span id="mStatHolidayOff" class="text-orange-500" title="节假日">0</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="salaryInfo" class="salary-related mb-6">
+                        <div class="bg-gradient-to-br from-blue-600 to-indigo-700 p-5 rounded-3xl text-white shadow-xl flex items-stretch gap-4 relative overflow-hidden">
+                            <div class="flex-1 flex flex-col justify-center relative z-10">
+                                <span class="text-[10px] font-bold text-blue-100/80 uppercase block mb-1">当月预估总额</span>
+                                <div id="totalDisplay" class="text-3xl font-black italic tracking-tighter">¥0.00</div>
+                            </div>
+                            <div class="flex flex-col gap-2 w-32 shrink-0 relative z-10 font-bold">
+                                <div class="bg-white/15 p-2 rounded-2xl border border-white/20">
+                                    <div class="flex justify-between text-[8px] uppercase"><span>日薪</span><span id="legalDaysBadge">/0d</span></div>
+                                    <div id="dailyWageDisplay" class="text-[11px]">¥0.00</div>
+                                </div>
+                                <div class="bg-white/10 p-2 rounded-2xl border border-white/10 text-emerald-300">
+                                    <div class="flex justify-between text-[8px] uppercase"><span>加班</span><span id="otDaysBadge">x0d</span></div>
+                                    <div id="overtimePayDisplay" class="text-[11px]">+¥0.00</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="calendarHeader" class="calendar-grid mb-2 text-center text-[10px] font-bold text-slate-300 select-none"></div>
+                    <div id="calendarGrid" class="calendar-grid"></div>
+                </div>
+            </div>
+            <div class="lg:col-span-7"><div id="monthContainer" class="space-y-3"></div></div>
+        </div>
+    </div>
+
+    <script>
+        const holidayMap = new Map();
+        const extraMap = new Map();
+        let currentYear = 2026;
+        let activeMonth = new Date().getMonth();
+        let weekStart = 0; 
+
+        const yearSelect = document.getElementById('yearSelect');
+        for (let y = 2020; y <= 2030; y++) {
+            const opt = document.createElement('option');
+            opt.value = y; opt.textContent = y + ' 年';
+            if (y === currentYear) opt.selected = true;
+            yearSelect.appendChild(opt);
+        }
+
+        async function fetchHolidayData(y) {
+            document.getElementById('titleYear').innerText = y;
+            document.getElementById('statYearLabel').innerText = y;
+            document.getElementById('bgYearDisplay').innerText = y;
+            const url = `https://cdn.jsdelivr.net/gh/NateScarlet/holiday-cn@master/${y}.json`;
+            try {
+                const res = await fetch(url);
+                const data = await res.json();
+                holidayMap.clear(); extraMap.clear();
+                data.days.forEach(item => {
+                    if (item.isOffDay) holidayMap.set(item.date, item.name);
+                    else extraMap.set(item.date, item.name || '班');
+                });
+            } catch (err) {}
+            render();
+        }
+
+        // 核心：计算任意日期的出勤状态
+        function getDayStatus(year, month, day, mode) {
+            const dateObj = new Date(year, month, day);
+            const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+            const holidayName = holidayMap.get(dateStr);
+            const extraName = extraMap.get(dateStr);
+            const dayOfWeek = dateObj.getDay();
+
+            if (holidayName) return { status: "holiday", label: holidayName };
+            if (extraName) return { status: "extra", label: extraName };
+            
+            const isWeekend = (dayOfWeek === 0 || dayOfWeek === 6);
+            if (isWeekend) {
+                if ((mode === 'sat' && dayOfWeek === 6) || (mode === 'sun' && dayOfWeek === 0) || mode === 'none') {
+                    return { status: "overtime", label: "加班" };
+                }
+                return { status: "weekend-off", label: "休" };
+            }
+            return { status: "work", label: "" };
+        }
+
+        function render() {
+            const container = document.getElementById('monthContainer');
+            const mode = document.getElementById('mode').value;
+            const showSalary = document.getElementById('showSalary').checked;
+            const salaryBase = parseFloat(document.getElementById('baseSalary').value) || 0;
+            const todayStr = new Date().toISOString().split('T')[0];
+            
+            document.getElementById('salaryInputWrapper').className = showSalary ? 'salary-control-group expanded' : 'salary-control-group';
+            document.querySelectorAll('.salary-related').forEach(el => showSalary ? el.classList.remove('salary-privacy-hidden') : el.classList.add('salary-privacy-hidden'));
+
+            container.innerHTML = '';
+            let yStats = { baseSum:0, otSum:0, standardWork:0, overtimeWork:0, weekendOff:0, holidayOff:0 };
+
+            for (let m = 0; m < 12; m++) {
+                let mCounts = { totalDays:0, standardWork:0, overtimeWork:0, weekendOff:0, holidayOff:0, legalWorkdays:0, passedWork:0, totalWork:0, pureWork:0, extraWork:0 };
+                let days = [];
+                mCounts.totalDays = new Date(currentYear, m + 1, 0).getDate();
+                
+                for (let d = 1; d <= mCounts.totalDays; d++) {
+                    const info = getDayStatus(currentYear, m, d, mode);
+                    const dateStr = `${currentYear}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+                    
+                    if (info.status === "work" || info.status === "extra" || info.status === "overtime") {
+                        mCounts.totalWork++;
+                        if (dateStr <= todayStr) mCounts.passedWork++;
+                        if (info.status !== "overtime") mCounts.standardWork++;
+                        else mCounts.overtimeWork++;
+                        
+                        if (info.status === "work") mCounts.pureWork++;
+                        if (info.status === "extra") mCounts.extraWork++;
+                    } else {
+                        if (info.status === "holiday") mCounts.holidayOff++;
+                        else mCounts.weekendOff++;
+                    }
+
+                    // 计算计薪日（工作日及调休）
+                    const dw = new Date(currentYear, m, d).getDay();
+                    if (((dw >= 1 && dw <= 5) && !holidayMap.has(dateStr)) || extraMap.has(dateStr)) mCounts.legalWorkdays++;
+
+                    days.push({ d, ...info, isToday: dateStr === todayStr });
+                }
+
+                const wage = mCounts.legalWorkdays ? (salaryBase / mCounts.legalWorkdays) : 0;
+                const overtimePay = wage * mCounts.overtimeWork;
+                const totalIncome = salaryBase + overtimePay;
+                
+                yStats.baseSum += salaryBase; yStats.otSum += overtimePay;
+                yStats.standardWork += mCounts.standardWork; yStats.overtimeWork += mCounts.overtimeWork;
+                yStats.weekendOff += mCounts.weekendOff; yStats.holidayOff += mCounts.holidayOff;
+
+                if (m === activeMonth) updateDetail(m, days, totalIncome, wage, overtimePay, mCounts, showSalary, mode);
+
+                const progress = mCounts.totalWork ? Math.round((mCounts.passedWork / mCounts.totalWork) * 100) : 0;
+                const card = document.createElement('div');
+                card.className = `month-card bg-white p-4 rounded-2xl shadow-sm flex items-center gap-4 ${m === activeMonth ? 'active-month' : 'border-transparent cursor-pointer'}`;
+                card.onclick = () => { activeMonth = m; render(); };
+                card.innerHTML = `
+                    <div class="w-10 h-10 rounded-xl ${m === new Date().getMonth() && currentYear === new Date().getFullYear() ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-400'} flex items-center justify-center font-black shrink-0">${m+1}</div>
+                    <div class="flex-1 min-w-0">
+                        <div class="flex justify-between text-[10px] font-bold mb-1 uppercase tracking-tight"><span class="opacity-40">出勤 ${mCounts.passedWork}/${mCounts.totalWork}</span><span class="text-blue-600">${progress}%</span></div>
+                        <div class="w-full bg-slate-100 h-1 rounded-full overflow-hidden"><div class="h-full bg-blue-600" style="width:${progress}%"></div></div>
+                    </div>
+                    ${showSalary ? `<div class="text-right min-w-[90px] border-l pl-4 border-slate-50 shrink-0"><div class="text-[9px] font-bold text-slate-300">月预估</div><div class="font-black text-slate-700">¥${totalIncome.toFixed(0)}</div></div>` : ''}
+                `;
+                container.appendChild(card);
+            }
+            document.getElementById('yearTotalIncome').innerText = `¥${Math.round(yStats.baseSum + yStats.otSum).toLocaleString()}`;
+            document.getElementById('yearBaseSub').innerText = `¥${Math.round(yStats.baseSum).toLocaleString()}`;
+            document.getElementById('yearOtSub').innerText = `+¥${Math.round(yStats.otSum).toLocaleString()}`;
+            document.getElementById('yearTotalWorkDays').innerText = `${yStats.standardWork + yStats.overtimeWork} 天`;
+            document.getElementById('yearStandardWork').innerText = `${yStats.standardWork} 天`;
+            document.getElementById('yearOvertimeWork').innerText = `${yStats.overtimeWork} 天`;
+            document.getElementById('yearTotalOffDays').innerText = `${yStats.weekendOff + yStats.holidayOff} 天`;
+            document.getElementById('yearWeekendOff').innerText = `${yStats.weekendOff} 天`;
+            document.getElementById('yearHolidayOff').innerText = `${yStats.holidayOff} 天`;
+        }
+
+        function updateDetail(m, days, total, wage, overtimePay, mCounts, showSalary, mode) {
+            document.getElementById('detailTitle').innerText = `${m+1}月 详情`;
+            document.getElementById('statTotalDays').innerText = `共 ${mCounts.totalDays} 天`;
+            
+            const statsContainer = document.getElementById('quickStats');
+            const otCard = document.getElementById('otCard');
+            if (mCounts.overtimeWork > 0) {
+                statsContainer.classList.replace('grid-cols-2', 'grid-cols-3');
+                otCard.style.display = 'flex';
+                document.getElementById('mStatOvertimeWork').innerText = mCounts.overtimeWork;
+            } else {
+                statsContainer.classList.replace('grid-cols-3', 'grid-cols-2');
+                otCard.style.display = 'none';
+            }
+            document.getElementById('mStatStandardWork').innerText = mCounts.standardWork;
+            document.getElementById('mStatPureWork').innerText = mCounts.pureWork;
+            document.getElementById('mStatExtraWork').innerText = mCounts.extraWork;
+            document.getElementById('mStatTotalOff').innerText = mCounts.weekendOff + mCounts.holidayOff;
+            document.getElementById('mStatWeekendOff').innerText = mCounts.weekendOff;
+            document.getElementById('mStatHolidayOff').innerText = mCounts.holidayOff;
+
+            if(showSalary) {
+                document.getElementById('totalDisplay').innerText = `¥${total.toLocaleString(undefined, {minimumFractionDigits:2})}`;
+                document.getElementById('dailyWageDisplay').innerText = `¥${wage.toFixed(2)}`;
+                document.getElementById('overtimePayDisplay').innerText = `+¥${overtimePay.toFixed(2)}`;
+                document.getElementById('legalDaysBadge').innerText = `/${mCounts.legalWorkdays}d`;
+                document.getElementById('otDaysBadge').innerText = `x${mCounts.overtimeWork}d`;
+            }
+
+            const headerRow = document.getElementById('calendarHeader');
+            const weekLabels = ['日', '一', '二', '三', '四', '五', '六'];
+            if (weekStart === 1) weekLabels.push(weekLabels.shift());
+            headerRow.innerHTML = weekLabels.map(label => `<div>${label}</div>`).join('');
+
+            const grid = document.getElementById('calendarGrid');
+            grid.innerHTML = '';
+
+            const firstDayDate = new Date(currentYear, m, 1);
+            let offset = (firstDayDate.getDay() - weekStart + 7) % 7;
+            if (offset <= 3) offset += 7; // 视觉中心逻辑：前置留空
+
+            // 1. 填充前置（获取上月真实信息）
+            for (let i = offset - 1; i >= 0; i--) {
+                const targetDate = new Date(currentYear, m, 1 - (i + 1));
+                const info = getDayStatus(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate(), mode);
+                const cell = document.createElement('div');
+                cell.className = `day-cell status-${info.status} day-outside`;
+                cell.innerHTML = `<span class="day-num">${targetDate.getDate()}</span><span class="day-tag">${info.label}</span>`;
+                grid.appendChild(cell);
+            }
+
+            // 2. 填充本月
+            days.forEach(day => {
+                const cell = document.createElement('div');
+                cell.className = `day-cell status-${day.status} ${day.isToday ? 'today-mark' : ''}`;
+                cell.innerHTML = `<span class="day-num">${day.d}</span><span class="day-tag">${day.label}</span>`;
+                grid.appendChild(cell);
+            });
+
+            // 3. 填充后置（获取下月真实信息）
+            let nextD = 1;
+            while (grid.children.length < 42) {
+                const targetDate = new Date(currentYear, m + 1, nextD);
+                const info = getDayStatus(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate(), mode);
+                const cell = document.createElement('div');
+                cell.className = `day-cell status-${info.status} day-outside`;
+                cell.innerHTML = `<span class="day-num">${targetDate.getDate()}</span><span class="day-tag">${info.label}</span>`;
+                grid.appendChild(cell);
+                nextD++;
+            }
+        }
+
+        yearSelect.onchange = (e) => { currentYear = parseInt(e.target.value); fetchHolidayData(currentYear); };
+        document.getElementById('mode').onchange = render;
+        document.getElementById('baseSalary').oninput = render;
+        document.getElementById('showSalary').onchange = render;
+        document.getElementById('calendarHeader').onclick = () => { weekStart = weekStart === 0 ? 1 : 0; render(); };
+        
+        fetchHolidayData(currentYear);
+    </script>
+</body>
+</html>
