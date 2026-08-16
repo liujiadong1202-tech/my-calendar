@@ -37,6 +37,9 @@
     .tax-settings-panel.expanded { max-height: 420px; opacity: 1; margin-top: 12px; padding: 14px; border-top: 1px solid #e2e8f0; visibility: visible; }
     .untaxed-tag { background: #f1f5f9; color: #94a3b8; }
     .not-joined-tag { background: #f1f5f9; color: #94a3b8; }
+    /* 年终奖折叠面板 */
+    .bonus-body { max-height: 0; opacity: 0; overflow: hidden; transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1); }
+    .bonus-body.expanded { max-height: 1200px; opacity: 1; }
     .salary-control-group.hidden-when-no-salary { display: none !important; }
     /* 隐藏 number input 的 spinner，避免挤压输入框 */
     input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
@@ -44,6 +47,12 @@
     /* 起始记薪计税日标记 */
     .start-date-mark { outline: 2px dashed #10b981; outline-offset: 1px; position: relative; z-index: 5; }
     .start-date-mark .day-tag { color: #059669; }
+    /* 手动修正加班日 */
+    .day-toggleable { cursor: pointer; }
+    .day-toggleable:hover { filter: brightness(0.95); box-shadow: 0 0 0 2px #f59e0b; }
+    .manual-mark { border-color: #f59e0b !important; box-shadow: inset 0 0 0 1.5px #f59e0b; }
+    .manual-mark .day-num { color: #b45309; }
+    .manual-mark .day-tag { color: #b45309; }
 </style>
 
 </head>
@@ -123,32 +132,65 @@
                 </h3>
             </div>
             <div id="annualGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
-                <div id="annualSalaryCol" class="salary-related space-y-6">
+                <div id="annualSalaryCol" class="salary-related space-y-6 lg:col-span-2">
+                    <div class="flex flex-wrap items-end justify-between gap-4">
+                        <div>
+                            <span class="text-[10px] font-bold opacity-40 block mb-1 uppercase">全年税前预估总收入（含年终奖）</span>
+                            <div id="yearTotalIncome" class="text-4xl font-black text-white italic tracking-tighter">¥0</div>
+                        </div>
+                        <div class="grid grid-cols-3 gap-4">
+                            <div class="text-right">
+                                <span class="text-[10px] font-bold text-emerald-400/60 block mb-1">基本薪资</span>
+                                <div id="yearBaseSub" class="text-sm font-bold text-emerald-300 font-mono">+¥0</div>
+                            </div>
+                            <div class="text-right">
+                                <span class="text-[10px] font-bold text-blue-400/60 block mb-1">加班费</span>
+                                <div id="yearOtSub" class="text-sm font-bold text-blue-400 font-mono">+¥0</div>
+                            </div>
+                            <div class="text-right">
+                                <span class="text-[10px] font-bold text-amber-400/60 block mb-1">年终奖</span>
+                                <div id="yearBonusSub" class="text-sm font-bold text-amber-300 font-mono">+¥0</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="border-t border-white/10 pt-6">
+                        <p class="text-[9px] font-bold opacity-50 tracking-widest mb-3 uppercase">税前总收入 − 五险一金 − 个税 = 税后净收入</p>
+                        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                            <div class="bg-white/5 rounded-xl p-3">
+                                <span class="text-[9px] font-bold text-rose-300/60 block mb-1">五险一金累计</span>
+                                <div id="yearInsuranceSub" class="text-sm font-bold text-rose-300 font-mono">-¥0</div>
+                            </div>
+                            <div class="bg-white/5 rounded-xl p-3">
+                                <span class="text-[9px] font-bold text-rose-300/60 block mb-1">全年总税额</span>
+                                <div id="yearTotalTax" class="text-sm font-bold text-rose-300 font-mono">-¥0</div>
+                            </div>
+                            <div class="bg-white/5 rounded-xl p-3">
+                                <span class="text-[9px] font-bold opacity-50 block mb-1">扣除合计</span>
+                                <div id="yearTotalDeduct" class="text-sm font-bold text-slate-300 font-mono">-¥0</div>
+                            </div>
+                            <div class="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-3">
+                                <span class="text-[9px] font-bold text-emerald-400/70 block mb-1">税后净收入</span>
+                                <div id="yearAfterTaxIncome" class="text-sm font-bold text-emerald-300 font-mono">¥0</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="space-y-6">
                     <div>
-                        <span class="text-[10px] font-bold opacity-40 block mb-1 uppercase">全年预估总收入</span>
-                        <div id="yearTotalIncome" class="text-4xl font-black text-white italic tracking-tighter">¥0</div>
+                        <span class="text-[10px] font-bold opacity-40 block mb-1 uppercase">全年出勤</span>
+                        <div id="yearTotalWorkDays" class="text-2xl font-black text-white italic tracking-tighter">0</div>
                     </div>
-                    <div class="grid grid-cols-2 gap-4 border-t border-white/10 pt-6">
-                        <div><span class="text-[10px] font-bold opacity-30 block mb-1">基本薪资累计</span><div id="yearBaseSub" class="text-sm font-bold text-slate-300 font-mono">¥0</div></div>
-                        <div><span class="text-[10px] font-bold text-blue-400/60 block mb-1">加班费用累计</span><div id="yearOtSub" class="text-sm font-bold text-blue-400 font-mono">+¥0</div></div>
+                    <div class="grid grid-cols-2 gap-3 border-t border-white/10 pt-4">
+                        <div><span class="text-[9px] font-bold text-slate-400/70 block mb-1">标准工作</span><div id="yearStandardWork" class="text-xs font-bold text-slate-300">0天</div></div>
+                        <div><span class="text-[9px] font-bold text-emerald-400/60 block mb-1">加班出勤</span><div id="yearOvertimeWork" class="text-xs font-bold text-emerald-400">0天</div></div>
                     </div>
-                    <div class="grid grid-cols-2 gap-4 border-t border-white/10 pt-6">
-                        <div><span class="text-[10px] font-bold text-emerald-400/60 block mb-1">全年总税额</span><div id="yearTotalTax" class="text-sm font-bold text-emerald-400 font-mono">-¥0</div></div>
-                        <div><span class="text-[10px] font-bold text-emerald-300/60 block mb-1">税后净收入</span><div id="yearAfterTaxIncome" class="text-sm font-bold text-emerald-300 font-mono">¥0</div></div>
+                    <div class="border-t border-white/10 pt-4">
+                        <span class="text-[10px] font-bold opacity-40 block mb-1 uppercase">全年休息</span>
+                        <div id="yearTotalOffDays" class="text-2xl font-black text-orange-400 italic tracking-tighter">0</div>
                     </div>
-                </div>
-                <div class="space-y-6">
-                    <div><span class="text-[10px] font-bold opacity-40 block mb-1 uppercase">全年出勤</span><div id="yearTotalWorkDays" class="text-4xl font-black text-white italic tracking-tighter">0</div></div>
-                    <div class="grid grid-cols-2 gap-4 border-t border-white/10 pt-6">
-                        <div><span class="text-[10px] font-bold text-slate-400 block mb-1">标准工作</span><div id="yearStandardWork" class="text-sm font-bold text-slate-300">0天</div></div>
-                        <div><span class="text-[10px] font-bold text-emerald-400/60 block mb-1">加班出勤</span><div id="yearOvertimeWork" class="text-sm font-bold text-emerald-400">0天</div></div>
-                    </div>
-                </div>
-                <div class="space-y-6">
-                    <div><span class="text-[10px] font-bold opacity-40 block mb-1 uppercase">全年休息</span><div id="yearTotalOffDays" class="text-4xl font-black text-orange-400 italic tracking-tighter">0</div></div>
-                    <div class="grid grid-cols-2 gap-4 border-t border-white/10 pt-6">
-                        <div><span class="text-[10px] font-bold text-slate-400 block mb-1">常规周休</span><div id="yearWeekendOff" class="text-sm font-bold text-slate-300">0天</div></div>
-                        <div><span class="text-[10px] font-bold text-orange-400/60 block mb-1">法定节假</span><div id="yearHolidayOff" class="text-sm font-bold text-orange-400">0天</div></div>
+                    <div class="grid grid-cols-2 gap-3 border-t border-white/10 pt-4">
+                        <div><span class="text-[9px] font-bold text-slate-400/70 block mb-1">常规周休</span><div id="yearWeekendOff" class="text-xs font-bold text-slate-300">0天</div></div>
+                        <div><span class="text-[9px] font-bold text-orange-400/60 block mb-1">法定节假</span><div id="yearHolidayOff" class="text-xs font-bold text-orange-400">0天</div></div>
                     </div>
                 </div>
             </div>
@@ -156,18 +198,23 @@
         <div id="bgYearDisplay" class="absolute -right-8 -bottom-8 text-white opacity-[0.03] font-black text-9xl italic select-none pointer-events-none uppercase">2026</div>
     </div>
 
-    <div id="bonusSection" class="salary-related bg-white p-6 md:p-8 rounded-3xl shadow-lg border border-gray-100 mb-8">
-        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-            <div class="flex items-center gap-3">
+    <div id="bonusSection" class="salary-related bg-white rounded-3xl shadow-lg border border-gray-100 mb-8 overflow-hidden">
+        <div id="bonusHeader" class="p-6 flex flex-col md:flex-row md:items-center justify-between gap-3 cursor-pointer select-none" title="点击展开/收起年终奖详情">
+            <div class="flex flex-wrap items-center gap-3">
                 <span class="w-2 h-2 bg-emerald-500 rounded-full"></span>
                 <h3 class="text-sm font-black text-slate-900 tracking-tight">年终奖计算</h3>
                 <span id="bonusMultBadge" class="text-xs font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">×2</span>
-                <span id="bonusAmountBadge" class="text-sm font-black text-slate-700 font-mono">¥0.00</span>
+                <span id="bonusAmountBadge" class="text-sm font-black text-slate-700 font-mono">税后 ¥0.00</span>
+                <span id="bonusPretaxBadge" class="hidden text-[10px] font-bold text-slate-400 bg-slate-50 px-2 py-0.5 rounded-full border border-slate-100">税前 ¥0.00</span>
                 <span id="bonusProrationBadge" class="hidden text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-100">按入职比例折算 0%</span>
             </div>
-            <p class="text-[10px] text-slate-400 leading-relaxed md:text-right">奖金 = 月薪 × 倍数 × 入职比例 (实际基数累计 ÷ 12×月薪)</p>
+            <div class="flex items-center gap-3 shrink-0">
+                <span id="bonusRecommendBadge" class="hidden text-[10px] font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">✓ 推荐 单独计税</span>
+                <span id="bonusToggleIcon" class="text-slate-400 text-lg font-black leading-none transition-transform duration-300">▾</span>
+            </div>
         </div>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div id="bonusBody" class="bonus-body">
+            <div class="border-t border-gray-100 p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
             <div id="bonusSeparateCard" class="rounded-2xl p-5 border-2 transition-all relative overflow-hidden">
                 <div class="flex items-center justify-between mb-3">
                     <span class="text-[10px] font-black text-slate-500 uppercase tracking-widest">单独计税</span>
@@ -210,6 +257,7 @@
                 </div>
                 <p class="text-[9px] text-slate-400 mt-3 leading-relaxed">年终奖并入 12 月综合所得，按累计预扣法重算</p>
             </div>
+            </div>
         </div>
     </div>
 
@@ -248,8 +296,11 @@
                     </div>
                 </div>
                 <div id="salaryInfo" class="salary-related space-y-3 mb-6">
-                    <div class="bg-blue-600 p-5 rounded-2xl text-white shadow-md shadow-blue-100">
-                        <span class="text-[10px] font-bold opacity-70 uppercase block mb-1">当月预估总额</span>
+<div class="bg-blue-600 p-5 rounded-2xl text-white shadow-md shadow-blue-100">
+                        <div class="flex justify-between items-start">
+                            <span class="text-[10px] font-bold opacity-70 uppercase block">当月税后实发</span>
+                            <span id="totalPretaxBadge" class="text-[8px] font-bold bg-white/15 px-1.5 py-0.5 rounded text-white/80">税前 ¥0.00</span>
+                        </div>
                         <div id="totalDisplay" class="text-3xl font-black italic">¥0.00</div>
                     </div>
                     <div class="grid grid-cols-2 gap-3">
@@ -272,6 +323,13 @@
                 </div>
                 <div id="calendarHeader" class="calendar-grid mb-2 text-center text-[10px] font-bold text-slate-300 select-none" title="点击切换周起始日"></div>
                 <div id="calendarGrid" class="calendar-grid"></div>
+                <div class="flex flex-wrap items-center justify-between gap-2 mt-3 text-[9px] font-bold text-slate-400">
+                    <span>点击日期可切换「加班 / 休」（<span class="inline-block w-2 h-2 rounded border" style="border-color:#f59e0b"></span>琥珀边框 = 手动修正，未点按即采用推荐值）</span>
+                    <div class="flex gap-2 shrink-0">
+                        <button id="resetMonthManual" type="button" class="bg-slate-100 hover:bg-slate-200 text-slate-500 px-2 py-1 rounded-lg transition">重置本月</button>
+                        <button id="resetYearManual" type="button" class="bg-slate-100 hover:bg-slate-200 text-slate-500 px-2 py-1 rounded-lg transition">重置本年</button>
+                    </div>
+                </div>
             </div>
         </div>
         <div class="lg:col-span-7"><div id="monthContainer" class="space-y-3"></div></div>
@@ -284,6 +342,10 @@
     let currentYear = 2026;
     let activeMonth = new Date().getMonth();
     let weekStart = 0; 
+
+    // 手动修正的加班日（键为日期 YYYY-MM-DD，值为修正后的状态 'overtime' | 'weekend-off'）
+    const manualOt = {};
+    const OT_MANUAL_STORAGE_KEY = 'manualOt_v1'; 
 
     // 计税配置（各年份独立配置起始日）
     const taxConfig = { 
@@ -319,6 +381,64 @@
                 specialDeduction: taxConfig.specialDeduction,
                 bonusMultiplier: taxConfig.bonusMultiplier,
                 startDateByYear: taxConfig.startDateByYear
+            }));
+        } catch (e) {}
+    }
+
+    // 手动修正加班日的持久化
+    function loadManualOt() {
+        try {
+            const saved = localStorage.getItem(OT_MANUAL_STORAGE_KEY);
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                if (parsed && typeof parsed === 'object') {
+                    Object.assign(manualOt, parsed);
+                }
+            }
+        } catch (e) {}
+    }
+
+    function saveManualOt() {
+        try {
+            localStorage.setItem(OT_MANUAL_STORAGE_KEY, JSON.stringify(manualOt));
+        } catch (e) {}
+    }
+
+    // 界面参数持久化（月薪基数、薪资展示、出勤模式、年份、周起始）
+    const uiSettings = {
+        baseSalary: 10000,
+        showSalary: false,
+        mode: 'sun',
+        year: 2026,
+        weekStart: 0,
+        bonusExpanded: false
+    };
+    const UI_STORAGE_KEY = 'uiSettings_v1';
+
+    function loadUiSettings() {
+        try {
+            const saved = localStorage.getItem(UI_STORAGE_KEY);
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                if (typeof parsed.baseSalary === 'number') uiSettings.baseSalary = parsed.baseSalary;
+                if (typeof parsed.showSalary === 'boolean') uiSettings.showSalary = parsed.showSalary;
+                if (typeof parsed.mode === 'string') uiSettings.mode = parsed.mode;
+                if (typeof parsed.year === 'number') uiSettings.year = parsed.year;
+                if (typeof parsed.weekStart === 'number') uiSettings.weekStart = parsed.weekStart;
+                if (typeof parsed.bonusExpanded === 'boolean') uiSettings.bonusExpanded = parsed.bonusExpanded;
+            }
+        } catch (e) {}
+    }
+
+    function saveUiSettings() {
+        try {
+            localStorage.setItem(UI_STORAGE_KEY, JSON.stringify({
+                baseSalary: uiSettings.baseSalary,
+                showSalary: uiSettings.showSalary,
+                mode: uiSettings.mode,
+                year: uiSettings.year,
+                weekStart: uiSettings.weekStart,
+                bonusExpanded: uiSettings.bonusExpanded
             }));
         } catch (e) {}
     }
@@ -433,6 +553,8 @@
         return newResults.reduce((s, r) => s + r.tax, 0);
     }
 
+    loadUiSettings();
+    currentYear = uiSettings.year;
     const yearSelect = document.getElementById('yearSelect');
     for (let y = 2020; y <= 2030; y++) {
         const opt = document.createElement('option');
@@ -443,10 +565,19 @@
 
     // 初始化：加载已保存的配置并填充表单
     loadTaxConfig();
+    loadManualOt();
     document.getElementById('insuranceRate').value = taxConfig.insuranceRate * 100;
     document.getElementById('specialDeduction').value = taxConfig.specialDeduction;
     document.getElementById('bonusMultiplier').value = taxConfig.bonusMultiplier;
     document.getElementById('taxStartDate').value = getStartDate(currentYear);
+    document.getElementById('baseSalary').value = uiSettings.baseSalary;
+    document.getElementById('showSalary').checked = uiSettings.showSalary;
+    document.getElementById('mode').value = uiSettings.mode;
+    weekStart = uiSettings.weekStart;
+    const bonusBody = document.getElementById('bonusBody');
+    const bonusToggleIcon = document.getElementById('bonusToggleIcon');
+    if (uiSettings.bonusExpanded) bonusBody.classList.add('expanded');
+    bonusToggleIcon.style.transform = uiSettings.bonusExpanded ? 'rotate(180deg)' : '';
 
     async function fetchHolidayData(y) {
         document.getElementById('titleYear').innerText = y;
@@ -462,6 +593,22 @@
                 else extraMap.set(item.date, item.name || '班');
             });
         } catch (err) {}
+        render();
+    }
+
+    function toggleManual(dateStr, autoStatus) {
+        if (manualOt[dateStr]) {
+            delete manualOt[dateStr];               // 已手动修正：再次点击恢复为推荐值
+        } else {
+            manualOt[dateStr] = autoStatus === 'overtime' ? 'weekend-off' : 'overtime';  // 推荐值为加班→改休；为休/法定假→改加班
+        }
+        saveManualOt();
+        render();
+    }
+
+    function clearManualForPrefix(prefix) {
+        Object.keys(manualOt).forEach(k => { if (k.startsWith(prefix)) delete manualOt[k]; });
+        saveManualOt();
         render();
     }
 
@@ -505,10 +652,14 @@
                 const extraName = extraMap.get(dateStr);
                 const dayOfWeek = new Date(currentYear, m, d).getDay();
                 if (dayOfWeek >= 1 && dayOfWeek <= 5) mCounts.salaryDays++;
-                let status = "work", label = "", isWorking = true;
-                if (holidayName) { status = "holiday"; label = holidayName; isWorking = false; mCounts.holidayOff++; } 
-                else if (extraName) { status = "extra"; label = extraName; isWorking = true; mCounts.standardWork++; mCounts.extraWork++; } 
-                else {
+
+                // —— 推荐值：按出勤模式自动计算 ——
+                let autoStatus = "work", label = "班", isWorking = true;
+                if (holidayName) {
+                    autoStatus = "holiday"; label = holidayName; isWorking = false;
+                } else if (extraName) {
+                    autoStatus = "extra"; label = extraName; isWorking = true;
+                } else {
                     const isWeekend = (dayOfWeek === 0 || dayOfWeek === 6);
                     if (isWeekend) {
                         // 'sun' 模式下，若前一天(周六)为补班，则该周日不加班(改为休息)
@@ -517,14 +668,26 @@
                             const prevStr = `${prev.getFullYear()}-${String(prev.getMonth()+1).padStart(2,'0')}-${String(prev.getDate()).padStart(2,'0')}`;
                             return extraMap.has(prevStr);
                         })());
-
-                        if (isSunAfterExtraSat) {
-                            status = "weekend-off"; label = "休"; isWorking = false; mCounts.weekendOff++;
-                        } else if ((mode === 'sat' && dayOfWeek === 6) || (mode === 'sun' && dayOfWeek === 0) || mode === 'none') {
-                            status = "overtime"; label = "加班"; isWorking = true; mCounts.overtimeWork++;
-                        } else { status = "weekend-off"; label = "休"; isWorking = false; mCounts.weekendOff++; }
-                    } else { status = "work"; isWorking = true; mCounts.standardWork++; mCounts.pureWork++; }
+                        if (isSunAfterExtraSat) { autoStatus = "weekend-off"; label = "休"; isWorking = false; }
+                        else if ((mode === 'sat' && dayOfWeek === 6) || (mode === 'sun' && dayOfWeek === 0) || mode === 'none') { autoStatus = "overtime"; label = "加班"; isWorking = true; }
+                        else { autoStatus = "weekend-off"; label = "休"; isWorking = false; }
+                    } else { autoStatus = "work"; isWorking = true; }
                 }
+
+                // —— 手动修正：手动值优先，未点按则采用推荐值 ——
+                const manual = manualOt[dateStr];
+                const status = manual || autoStatus;
+                const isManual = Boolean(manual);
+                if (isManual) {
+                    if (status === 'overtime') { label = '加班'; isWorking = true; }
+                    else { label = status === 'holiday' ? (holidayName || '假') : '休'; isWorking = false; }
+                }
+
+                if (status === 'holiday') { mCounts.holidayOff++; }
+                else if (status === 'extra') { mCounts.standardWork++; mCounts.extraWork++; }
+                else if (status === 'overtime') { mCounts.overtimeWork++; }
+                else if (status === 'weekend-off') { mCounts.weekendOff++; }
+                else { mCounts.standardWork++; mCounts.pureWork++; }
                 if (isWorking) { mCounts.totalWork++; if (dateStr <= todayStr) mCounts.passedWork++; }
 
                 // 起始日之后的有效工作日/加班日（用于薪资折算）
@@ -535,7 +698,8 @@
                     if (status === 'overtime') mCounts.effOvertime++;
                 }
 
-                days.push({ d, status, label, isToday: dateStr === todayStr, isStartDate });
+                days.push({ d, dateStr, status, autoStatus, label, isToday: dateStr === todayStr, isStartDate, isManual,
+                            toggleable: status === 'overtime' || status === 'weekend-off' || status === 'holiday' });
             }
 
             // 日薪计算方式不变（分母为全月应出勤天数 salaryDays）
@@ -588,9 +752,9 @@
                 } else {
                     salaryBlock = `
                         <div class="text-right min-w-[110px] border-l pl-4 border-slate-50 shrink-0">
-                            <div class="text-[9px] font-bold text-slate-300">月预估</div>
-                            <div class="font-black text-slate-700">¥${totalIncome.toFixed(2)}</div>
-                            ${taxInfo ? `<div class="text-[9px] font-bold ${taxInfo.isTaxed ? 'text-emerald-600' : 'text-slate-400'} mt-0.5">${taxInfo.isTaxed ? '税后 ¥' + taxInfo.afterTax.toFixed(2) : '未计税'}</div>` : ''}
+                            <div class="text-[9px] font-bold text-slate-300">税后实发</div>
+                            <div class="font-black ${taxInfo && taxInfo.isTaxed ? 'text-emerald-600' : 'text-slate-700'}">${taxInfo ? '¥' + taxInfo.afterTax.toFixed(2) : '¥' + totalIncome.toFixed(2)}</div>
+                            <div class="text-[9px] font-bold text-slate-400 mt-0.5">税前 ¥${totalIncome.toFixed(2)}</div>
                         </div>
                     `;
                 }
@@ -607,30 +771,16 @@
         });
 
         if(showSalary) {
-            document.getElementById('yearTotalIncome').innerText = `¥${(yStats.baseSum + yStats.otSum).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
-            document.getElementById('yearBaseSub').innerText = `¥${yStats.baseSum.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
-            document.getElementById('yearOtSub').innerText = `+¥${yStats.otSum.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
-            // 年度税额汇总
-            const totalTax = taxResults.reduce((s, r) => s + (r ? r.tax : 0), 0);
-            const totalAfterTax = taxResults.reduce((s, r, i) => s + (r ? r.afterTax : monthlyIncomes[i]), 0);
-            document.getElementById('yearTotalTax').innerText = `-¥${totalTax.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
-            document.getElementById('yearAfterTaxIncome').innerText = `¥${totalAfterTax.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+            // —— 年度月度统计（不含年终奖）——
+            const baseTotalTax = taxResults.reduce((s, r) => s + (r ? r.tax : 0), 0);
+            const totalIns = taxResults.reduce((s, r) => s + (r ? r.insurance : 0), 0);
+            const baseAfterTax = taxResults.reduce((s, r, i) => s + (r ? r.afterTax : monthlyIncomes[i]), 0);
 
-            // 年终奖计算（按入职比例折算）
+            // —— 年终奖计算（按入职比例折算）——
             const multiplier = taxConfig.bonusMultiplier;
             const fullYearBase = 12 * salaryBase;
             const prorationRatio = fullYearBase > 0 ? Math.min(1, yStats.baseSum / fullYearBase) : 0;
             const bonusAmount = salaryBase * multiplier * prorationRatio;
-
-            document.getElementById('bonusMultBadge').innerText = `×${multiplier}`;
-            document.getElementById('bonusAmountBadge').innerText = `¥${bonusAmount.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
-            const prorationBadge = document.getElementById('bonusProrationBadge');
-            if (prorationRatio < 0.999 && multiplier > 0) {
-                prorationBadge.classList.remove('hidden');
-                prorationBadge.innerText = `按入职比例折算 ${(prorationRatio * 100).toFixed(0)}%`;
-            } else {
-                prorationBadge.classList.add('hidden');
-            }
 
             // 单独计税
             const separate = calcBonusSeparateTax(bonusAmount);
@@ -642,12 +792,56 @@
                 combinedAvailable = false;
             } else {
                 const combinedTotalTax = calcBonusCombinedTax(monthlyIncomes, salaryBase, startDateStr, bonusAmount);
-                combinedBonusTax = Math.max(0, combinedTotalTax - totalTax);
+                combinedBonusTax = Math.max(0, combinedTotalTax - baseTotalTax);
             }
             const combinedAfterTax = bonusAmount - combinedBonusTax;
 
             // 推荐判断：税额更低者
             const separateIsBetter = combinedAvailable ? (separate.tax <= combinedBonusTax) : true;
+
+            // 推荐计税方式下的年终奖税后（供年度统计与摘要）
+            const recBonusTax = combinedAvailable && !separateIsBetter ? combinedBonusTax : separate.tax;
+            const recBonusAfterTax = Math.max(0, bonusAmount - recBonusTax);
+
+            // —— 年度明细统计（含年终奖）——
+            const totalIncome = yStats.baseSum + yStats.otSum + bonusAmount;
+            const totalTax = baseTotalTax + recBonusTax;
+            const totalAfterTax = baseAfterTax + recBonusAfterTax;
+            document.getElementById('yearTotalIncome').innerText = `¥${totalIncome.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+            document.getElementById('yearBaseSub').innerText = `+¥${yStats.baseSum.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+            document.getElementById('yearOtSub').innerText = `+¥${yStats.otSum.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+            document.getElementById('yearBonusSub').innerText = `+¥${bonusAmount.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+            document.getElementById('yearInsuranceSub').innerText = `-¥${totalIns.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+            document.getElementById('yearTotalTax').innerText = `-¥${totalTax.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+            document.getElementById('yearTotalDeduct').innerText = `-¥${(totalIns + totalTax).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+            document.getElementById('yearAfterTaxIncome').innerText = `¥${totalAfterTax.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+
+            // —— 年终奖板块摘要 ——
+            document.getElementById('bonusMultBadge').innerText = `×${multiplier}`;
+            document.getElementById('bonusAmountBadge').innerText = `税后 ¥${recBonusAfterTax.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+            const pretaxBadge = document.getElementById('bonusPretaxBadge');
+            if (multiplier > 0 && bonusAmount > 0) {
+                pretaxBadge.classList.remove('hidden');
+                pretaxBadge.innerText = `税前 ¥${bonusAmount.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+            } else {
+                pretaxBadge.classList.add('hidden');
+            }
+            const prorationBadge = document.getElementById('bonusProrationBadge');
+            if (prorationRatio < 0.999 && multiplier > 0) {
+                prorationBadge.classList.remove('hidden');
+                prorationBadge.innerText = `按入职比例折算 ${(prorationRatio * 100).toFixed(0)}%`;
+            } else {
+                prorationBadge.classList.add('hidden');
+            }
+
+            // 头部摘要：推荐方式徽标（收起状态下也能看到结论）
+            const recBadge = document.getElementById('bonusRecommendBadge');
+            if (multiplier > 0 && bonusAmount > 0) {
+                recBadge.classList.remove('hidden');
+                recBadge.innerText = combinedAvailable ? (separateIsBetter ? '✓ 推荐 单独计税' : '✓ 推荐 合并计税') : '✓ 单独计税';
+            } else {
+                recBadge.classList.add('hidden');
+            }
 
             // 填充单独计税
             const sepCard = document.getElementById('bonusSeparateCard');
@@ -734,7 +928,9 @@
         document.getElementById('mStatHolidayOff').innerText = mCounts.holidayOff;
 
         if(showSalary) {
-            document.getElementById('totalDisplay').innerText = `¥${total.toLocaleString(undefined, {minimumFractionDigits:2})}`;
+            const afterTaxTotal = taxInfo && taxInfo.isNotJoined ? 0 : (taxInfo ? taxInfo.afterTax : total);
+            document.getElementById('totalDisplay').innerText = `¥${afterTaxTotal.toLocaleString(undefined, {minimumFractionDigits:2})}`;
+            document.getElementById('totalPretaxBadge').innerText = `税前 ¥${total.toLocaleString(undefined, {minimumFractionDigits:2})}`;
             document.getElementById('dailyWageDisplay').innerText = `¥${wage.toFixed(2)}`;
             document.getElementById('overtimePayDisplay').innerText = `+¥${overtimePay.toFixed(2)}`;
             document.getElementById('salaryDaysBadge').innerText = `/${mCounts.salaryDays}天`;
@@ -787,22 +983,36 @@
         for(let i=0; i<offset; i++) grid.appendChild(document.createElement('div'));
         days.forEach(day => {
             const cell = document.createElement('div');
-            cell.className = `day-cell status-${day.status} ${day.isToday ? 'today-mark' : ''} ${day.isStartDate ? 'start-date-mark' : ''}`;
+            cell.className = `day-cell status-${day.status} ${day.isToday ? 'today-mark' : ''} ${day.isStartDate ? 'start-date-mark' : ''} ${day.toggleable ? 'day-toggleable' : ''} ${day.isManual ? 'manual-mark' : ''}`;
             cell.innerHTML = `<span class="day-num">${day.d}</span><span class="day-tag">${day.isStartDate ? '入职' : day.label}</span>`;
+            if (day.toggleable) {
+                cell.title = '点击切换 加班/休';
+                cell.onclick = () => toggleManual(day.dateStr, day.autoStatus);
+            }
             grid.appendChild(cell);
         });
     }
 
     yearSelect.onchange = (e) => { 
-        currentYear = parseInt(e.target.value); 
+        currentYear = parseInt(e.target.value);
+        uiSettings.year = currentYear;
+        saveUiSettings();
         // 切换年份时同步显示该年份的起始日
         document.getElementById('taxStartDate').value = getStartDate(currentYear);
         fetchHolidayData(currentYear); 
     };
-    document.getElementById('mode').onchange = render;
-    document.getElementById('baseSalary').oninput = render;
-    document.getElementById('showSalary').onchange = render;
-    document.getElementById('calendarHeader').onclick = () => { weekStart = weekStart === 0 ? 1 : 0; render(); };
+    document.getElementById('mode').onchange = (e) => { uiSettings.mode = e.target.value; saveUiSettings(); render(); };
+    document.getElementById('baseSalary').oninput = (e) => { uiSettings.baseSalary = parseFloat(e.target.value) || 0; saveUiSettings(); render(); };
+    document.getElementById('showSalary').onchange = (e) => { uiSettings.showSalary = e.target.checked; saveUiSettings(); render(); };
+    document.getElementById('calendarHeader').onclick = () => { weekStart = weekStart === 0 ? 1 : 0; uiSettings.weekStart = weekStart; saveUiSettings(); render(); };
+    document.getElementById('bonusHeader').onclick = () => {
+        uiSettings.bonusExpanded = !uiSettings.bonusExpanded;
+        saveUiSettings();
+        document.getElementById('bonusBody').classList.toggle('expanded', uiSettings.bonusExpanded);
+        document.getElementById('bonusToggleIcon').style.transform = uiSettings.bonusExpanded ? 'rotate(180deg)' : '';
+    };
+    document.getElementById('resetMonthManual').onclick = () => clearManualForPrefix(`${currentYear}-${String(activeMonth+1).padStart(2,'0')}-`);
+    document.getElementById('resetYearManual').onclick = () => clearManualForPrefix(`${currentYear}-`);
 
     // 计税设置事件
     document.getElementById('taxSettingsBtn').onclick = (e) => {
