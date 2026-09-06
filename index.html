@@ -1167,12 +1167,10 @@
         uiSettings.year = currentYear;
         saveUiSettings();
         
-        // 跨年薪资携带：切换到新年度时，若该年度无涨薪记录，自动将上一年度最终月薪基数设为新年度基数
+        // 跨年薪资携带：切换到未来年份时，自动将上一年度最终月薪基数设为新年度基数
         if (currentYear > prevYear) {
-            const prevRaises = salaryRaises[prevYear] || [];
-            const newRaises = salaryRaises[currentYear] || [];
-            if (newRaises.length === 0 && prevRaises.length > 0) {
-                const yearEndBase = getYearEndBase(prevYear);
+            const yearEndBase = getYearEndBase(prevYear);
+            if (yearEndBase !== uiSettings.baseSalary) {
                 uiSettings.baseSalary = yearEndBase;
                 document.getElementById('baseSalary').value = yearEndBase;
                 saveUiSettings();
