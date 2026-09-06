@@ -107,28 +107,6 @@
                 </div>
             </div>
 
-            <div id="raiseSettingsControl" class="salary-control-group salary-related hidden-when-no-salary bg-slate-50 p-2 px-3 rounded-2xl border border-slate-100 relative">
-                <div class="flex items-center gap-2 shrink-0">
-                    <span class="text-[10px] font-bold text-slate-500 uppercase">涨薪记录</span>
-                    <button id="raiseSettingsBtn" type="button" class="w-5 h-5 flex items-center justify-center rounded-md bg-slate-200 hover:bg-slate-300 text-slate-600 text-[10px] font-bold cursor-pointer transition" title="展开涨薪设置">⚙</button>
-                </div>
-                <div id="raiseSettingsPanel" class="tax-settings-panel absolute top-full right-0 w-[380px] max-w-[calc(100vw-2rem)] bg-white shadow-2xl rounded-2xl border border-slate-200 z-50">
-                    <div class="p-4">
-                        <div class="flex gap-2 mb-3">
-                            <select id="raiseMonth" class="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-700 focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none">
-                                <option value="1">1月</option><option value="2">2月</option><option value="3">3月</option><option value="4">4月</option>
-                                <option value="5">5月</option><option value="6">6月</option><option value="7">7月</option><option value="8">8月</option>
-                                <option value="9">9月</option><option value="10">10月</option><option value="11">11月</option><option value="12">12月</option>
-                            </select>
-                            <input type="number" id="raiseAmount" placeholder="增加金额" min="1" step="100" class="flex-1 min-w-0 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-700 focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none">
-                            <button id="addRaiseBtn" type="button" class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition shrink-0">添加</button>
-                        </div>
-                        <div id="raiseList" class="space-y-1.5 max-h-40 overflow-y-auto"></div>
-                        <p class="text-[9px] text-slate-400 mt-3 leading-relaxed">从所选月份起基数永久增加，可多次涨薪；年终奖基数自动取当年平均月薪。</p>
-                    </div>
-                </div>
-            </div>
-
             <div class="bg-slate-50 p-2 px-4 rounded-2xl border border-slate-100 shrink-0">
                 <span class="text-[10px] font-bold text-slate-400 block mb-1 uppercase">年份</span>
                 <select id="yearSelect" class="bg-transparent border-none text-slate-700 font-bold text-sm focus:ring-0 p-0 outline-none cursor-pointer"></select>
@@ -370,6 +348,20 @@
                             <div class="bg-white/15 rounded-lg p-2"><span class="text-[9px] font-bold opacity-70 uppercase block">适用预扣率</span><div id="taxRateDisplay" class="text-xs font-black">0%</div></div>
                         </div>
                     </div>
+                </div>
+                <div id="raiseSection" class="salary-related space-y-2 mb-6">
+                    <div class="bg-amber-50 border border-amber-100 rounded-xl p-3">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-[9px] font-bold text-amber-600 uppercase">当月月薪基数</span>
+                            <span id="raiseEffBase" class="text-xs font-black text-amber-700 font-mono">¥10,000</span>
+                        </div>
+                        <div class="flex gap-2">
+                            <input type="number" id="raiseInput" placeholder="涨薪金额" min="0" step="100" class="flex-1 min-w-0 bg-white border border-amber-200 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-700 focus:ring-2 focus:ring-amber-200 focus:border-amber-400 outline-none">
+                            <button id="raiseApplyBtn" type="button" class="bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition shrink-0">设置</button>
+                            <button id="raiseClearBtn" type="button" class="bg-slate-200 hover:bg-slate-300 text-slate-500 px-2 py-1.5 rounded-lg text-xs font-bold transition shrink-0">清除</button>
+                        </div>
+                    </div>
+                    <div id="raiseYearList" class="text-[9px] text-slate-400"></div>
                 </div>
                 <div id="calendarHeader" class="calendar-grid mb-2 text-center text-[10px] font-bold text-slate-300 select-none" title="点击切换周起始日"></div>
                 <div id="calendarGrid" class="calendar-grid"></div>
@@ -1082,6 +1074,19 @@
                     document.getElementById('taxRateDisplay').innerText = `--`;
                 }
             }
+            // 涨薪区域更新
+            const effBase = getEffectiveBase(m + 1);
+            const currentRaise = (salaryRaises[currentYear] || []).find(r => r.month === m + 1);
+            document.getElementById('raiseEffBase').innerText = `¥${effBase.toLocaleString()}`;
+            document.getElementById('raiseInput').value = currentRaise ? currentRaise.increment : '';
+            // 显示当年所有涨薪记录
+            const allRaises = (salaryRaises[currentYear] || []).slice().sort((a, b) => a.month - b.month);
+            const raiseListEl = document.getElementById('raiseYearList');
+            if (allRaises.length > 0) {
+                raiseListEl.innerHTML = allRaises.map(r => `<span class="inline-block bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded mr-1 mb-1">${r.month}月 +¥${r.increment.toLocaleString()}</span>`).join('');
+            } else {
+                raiseListEl.innerHTML = '<span class="text-slate-300">全年无涨薪记录</span>';
+            }
         }
         const headerRow = document.getElementById('calendarHeader');
         const weekLabels = ['日', '一', '二', '三', '四', '五', '六'];
@@ -1111,7 +1116,6 @@
         // 切换年份时同步显示该年份的起始日
         document.getElementById('taxStartDate').value = getStartDate(currentYear);
         fetchHolidayData(currentYear);
-        renderRaiseList();
     };
     document.getElementById('mode').onchange = (e) => { uiSettings.mode = e.target.value; saveUiSettings(); render(); };
     document.getElementById('baseSalary').oninput = (e) => { uiSettings.baseSalary = parseFloat(e.target.value) || 0; saveUiSettings(); render(); };
@@ -1126,6 +1130,19 @@
     document.getElementById('resetMonthManual').onclick = () => clearManualForPrefix(`${currentYear}-${String(activeMonth+1).padStart(2,'0')}-`);
     document.getElementById('resetYearManual').onclick = () => clearManualForPrefix(`${currentYear}-`);
     document.getElementById('includeBonusInDaily').onchange = (e) => { uiSettings.includeBonusInDaily = e.target.checked; saveUiSettings(); render(); };
+
+    // 涨薪按钮事件
+    document.getElementById('raiseApplyBtn').onclick = () => {
+        const amount = parseFloat(document.getElementById('raiseInput').value) || 0;
+        applyRaise(activeMonth + 1, amount);
+    };
+    document.getElementById('raiseClearBtn').onclick = () => {
+        removeRaiseForMonth(activeMonth + 1);
+        document.getElementById('raiseInput').value = '';
+    };
+    document.getElementById('raiseInput').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') document.getElementById('raiseApplyBtn').click();
+    });
 
     // 计税设置事件
     document.getElementById('taxSettingsBtn').onclick = (e) => {
@@ -1163,61 +1180,25 @@
         if (panel.classList.contains('expanded') && !control.contains(e.target)) {
             panel.classList.remove('expanded');
         }
-        // 点击外部关闭涨薪面板
-        const rPanel = document.getElementById('raiseSettingsPanel');
-        const rControl = document.getElementById('raiseSettingsControl');
-        if (rPanel.classList.contains('expanded') && !rControl.contains(e.target)) {
-            rPanel.classList.remove('expanded');
-        }
     });
 
-    // 涨薪记录面板交互
-    function renderRaiseList() {
-        const list = document.getElementById('raiseList');
-        const raises = (salaryRaises[currentYear] || []).slice().sort((a, b) => a.month - b.month);
-        if (raises.length === 0) {
-            list.innerHTML = '<p class="text-[10px] text-slate-300 text-center py-2">暂无涨薪记录</p>';
-            return;
-        }
-        list.innerHTML = raises.map((r, i) => {
-            const effBase = getEffectiveBase(r.month);
-            return `<div class="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-1.5 text-xs">
-                <span class="font-bold text-slate-600">${r.month}月起 <span class="text-blue-600">+¥${r.increment.toLocaleString()}</span> <span class="text-slate-400">（基数 ¥${effBase.toLocaleString()}）</span></span>
-                <button onclick="removeRaise(${i})" class="text-slate-300 hover:text-rose-500 font-bold ml-2 transition">✕</button>
-            </div>`;
-        }).join('');
-    }
-    window.removeRaise = function(sortedIndex) {
-        const raises = salaryRaises[currentYear] || [];
-        // sortedIndex is position in sorted list; find actual month
-        const sorted = raises.slice().sort((a, b) => a.month - b.month);
-        const monthToRemove = sorted[sortedIndex].month;
-        salaryRaises[currentYear] = raises.filter(r => r.month !== monthToRemove);
-        if (salaryRaises[currentYear].length === 0) delete salaryRaises[currentYear];
-        saveSalaryRaises();
-        renderRaiseList();
-        render();
-    };
-
-    document.getElementById('raiseSettingsBtn').onclick = (e) => {
-        e.stopPropagation();
-        document.getElementById('raiseSettingsPanel').classList.toggle('expanded');
-    };
-    document.getElementById('addRaiseBtn').onclick = () => {
-        const month = parseInt(document.getElementById('raiseMonth').value, 10);
-        const amount = parseFloat(document.getElementById('raiseAmount').value) || 0;
-        if (amount <= 0) return;
+    // 涨薪操作函数（供月度详情面板调用）
+    window.applyRaise = function(month, amount) {
+        if (amount <= 0) { removeRaiseForMonth(month); return; }
         if (!salaryRaises[currentYear]) salaryRaises[currentYear] = [];
-        // 同月只保留最后一次
         salaryRaises[currentYear] = salaryRaises[currentYear].filter(r => r.month !== month);
         salaryRaises[currentYear].push({ month, increment: amount });
         salaryRaises[currentYear].sort((a, b) => a.month - b.month);
         saveSalaryRaises();
-        document.getElementById('raiseAmount').value = '';
-        renderRaiseList();
         render();
     };
-    document.getElementById('raiseMonth').value = new Date().getMonth() + 1;
+    window.removeRaiseForMonth = function(month) {
+        if (!salaryRaises[currentYear]) return;
+        salaryRaises[currentYear] = salaryRaises[currentYear].filter(r => r.month !== month);
+        if (salaryRaises[currentYear].length === 0) delete salaryRaises[currentYear];
+        saveSalaryRaises();
+        render();
+    };
 
     fetchHolidayData(currentYear);
 </script>
