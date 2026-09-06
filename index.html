@@ -459,7 +459,7 @@
 
     // 获取指定月份的有效月薪基数（累加该月及之前所有涨薪）
     function getEffectiveBase(month) {
-        let base = uiSettings.baseSalary;
+        let base = getBaseForYear(currentYear);
         const raises = salaryRaises[currentYear] || [];
         for (const r of raises) {
             if (month >= r.month) base += r.increment;
@@ -476,7 +476,7 @@
 
     // 获取指定年份12月的最终月薪基数（base + 该年所有涨薪），用于跨年携带
     function getYearEndBase(year) {
-        const base = uiSettings.baseSalary;
+        const base = getBaseForYear(year);
         const raises = salaryRaises[year] || [];
         let total = base;
         for (const r of raises) total += r.increment;
@@ -494,6 +494,32 @@
         includeBonusInDaily: false
     };
     const UI_STORAGE_KEY = 'uiSettings_v1';
+
+    // 各年度独立月薪基数
+    const BASE_BY_YEAR_KEY = 'baseSalaryByYear_v1';
+    let baseSalaryByYear = {};
+
+    function loadBaseSalaryByYear() {
+        try {
+            const saved = localStorage.getItem(BASE_BY_YEAR_KEY);
+            if (saved) { const p = JSON.parse(saved); if (p && typeof p === 'object') baseSalaryByYear = p; }
+        } catch (e) {}
+    }
+
+    function saveBaseSalaryByYear() {
+        try { localStorage.setItem(BASE_BY_YEAR_KEY, JSON.stringify(baseSalaryByYear)); } catch (e) {}
+    }
+
+    function getBaseForYear(year) {
+        if (baseSalaryByYear[year] != null) return baseSalaryByYear[year];
+        // 首次访问某年：若无记录则取全局 baseSalary 作为初始值
+        return uiSettings.baseSalary;
+    }
+
+    function setBaseForYear(year, val) {
+        baseSalaryByYear[year] = val;
+        saveBaseSalaryByYear();
+    }
 
     function loadUiSettings() {
         try {
@@ -661,11 +687,12 @@
     loadTaxConfig();
     loadManualOt();
     loadSalaryRaises();
+    loadBaseSalaryByYear();
     document.getElementById('insuranceRate').value = taxConfig.insuranceRate * 100;
     document.getElementById('specialDeduction').value = taxConfig.specialDeduction;
     document.getElementById('bonusMultiplier').value = taxConfig.bonusMultiplier;
     document.getElementById('taxStartDate').value = getStartDate(currentYear);
-    document.getElementById('baseSalary').value = uiSettings.baseSalary;
+    document.getElementById('baseSalary').value = getBaseForYear(currentYear);
     document.getElementById('showSalary').checked = uiSettings.showSalary;
     document.getElementById('mode').value = uiSettings.mode;
     weekStart = uiSettings.weekStart;
@@ -1167,22 +1194,20 @@
         uiSettings.year = currentYear;
         saveUiSettings();
         
-        // 跨年薪资携带：切换到未来年份时，自动将上一年度最终月薪基数设为新年度基数
-        if (currentYear > prevYear) {
-            const yearEndBase = getYearEndBase(prevYear);
-            if (yearEndBase !== uiSettings.baseSalary) {
-                uiSettings.baseSalary = yearEndBase;
-                document.getElementById('baseSalary').value = yearEndBase;
-                saveUiSettings();
-            }
+        // 首次访问新年度：若未设置过基数，自动从上一年度携带（base + 涨薪）
+        if (baseSalaryByYear[currentYear] == null && currentYear > prevYear) {
+            setBaseForYear(currentYear, getYearEndBase(prevYear));
         }
+        
+        // 切换年份时加载该年度独立月薪基数
+        document.getElementById('baseSalary').value = getBaseForYear(currentYear);
         
         // 切换年份时同步显示该年份的起始日
         document.getElementById('taxStartDate').value = getStartDate(currentYear);
         fetchHolidayData(currentYear);
     };
     document.getElementById('mode').onchange = (e) => { uiSettings.mode = e.target.value; saveUiSettings(); render(); };
-    document.getElementById('baseSalary').oninput = (e) => { uiSettings.baseSalary = parseFloat(e.target.value) || 0; saveUiSettings(); render(); };
+    document.getElementById('baseSalary').oninput = (e) => { const v = parseFloat(e.target.value) || 0; setBaseForYear(currentYear, v); render(); };
     document.getElementById('showSalary').onchange = (e) => { uiSettings.showSalary = e.target.checked; saveUiSettings(); render(); };
     document.getElementById('calendarHeader').onclick = () => { weekStart = weekStart === 0 ? 1 : 0; uiSettings.weekStart = weekStart; saveUiSettings(); render(); };
     document.getElementById('bonusHeader').onclick = () => {
