@@ -852,12 +852,13 @@
             const totalWorkDays = yStats.standardWork + yStats.overtimeWork;
             const avgFmt = (val) => val.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
             const includeBonus = uiSettings.includeBonusInDaily;
-            // 月薪：始终按12个月均摊（含年终奖）
-            document.getElementById('yearAvgPretaxMonthly').innerText = `¥${avgFmt(totalIncome / 12)}`;
-            document.getElementById('yearAvgAftertaxMonthly').innerText = `¥${avgFmt(totalAfterTax / 12)}`;
-            // 日薪：根据勾选决定是否含年终奖
+            // 月薪 & 日薪：根据勾选决定是否含年终奖
+            const monthlyPretax = includeBonus ? totalIncome : (yStats.baseSum + yStats.otSum);
+            const monthlyAftertax = includeBonus ? totalAfterTax : baseAfterTax;
             const dailyPretax = includeBonus ? totalIncome : (yStats.baseSum + yStats.otSum);
             const dailyAftertax = includeBonus ? totalAfterTax : baseAfterTax;
+            document.getElementById('yearAvgPretaxMonthly').innerText = `¥${avgFmt(monthlyPretax / 12)}`;
+            document.getElementById('yearAvgAftertaxMonthly').innerText = `¥${avgFmt(monthlyAftertax / 12)}`;
             document.getElementById('yearAvgPretaxDaily').innerText = `¥${totalWorkDays > 0 ? avgFmt(dailyPretax / totalWorkDays) : '0'}`;
             document.getElementById('yearAvgAftertaxDaily').innerText = `¥${totalWorkDays > 0 ? avgFmt(dailyAftertax / totalWorkDays) : '0'}`;
             // 更新说明文字
