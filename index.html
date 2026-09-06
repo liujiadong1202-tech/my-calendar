@@ -107,6 +107,28 @@
                 </div>
             </div>
 
+            <div id="raiseSettingsControl" class="salary-control-group salary-related hidden-when-no-salary bg-slate-50 p-2 px-3 rounded-2xl border border-slate-100 relative">
+                <div class="flex items-center gap-2 shrink-0">
+                    <span class="text-[10px] font-bold text-slate-500 uppercase">涨薪记录</span>
+                    <button id="raiseSettingsBtn" type="button" class="w-5 h-5 flex items-center justify-center rounded-md bg-slate-200 hover:bg-slate-300 text-slate-600 text-[10px] font-bold cursor-pointer transition" title="展开涨薪设置">⚙</button>
+                </div>
+                <div id="raiseSettingsPanel" class="tax-settings-panel absolute top-full right-0 w-[380px] max-w-[calc(100vw-2rem)] bg-white shadow-2xl rounded-2xl border border-slate-200 z-50">
+                    <div class="p-4">
+                        <div class="flex gap-2 mb-3">
+                            <select id="raiseMonth" class="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-700 focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none">
+                                <option value="1">1月</option><option value="2">2月</option><option value="3">3月</option><option value="4">4月</option>
+                                <option value="5">5月</option><option value="6">6月</option><option value="7">7月</option><option value="8">8月</option>
+                                <option value="9">9月</option><option value="10">10月</option><option value="11">11月</option><option value="12">12月</option>
+                            </select>
+                            <input type="number" id="raiseAmount" placeholder="增加金额" min="1" step="100" class="flex-1 min-w-0 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-700 focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none">
+                            <button id="addRaiseBtn" type="button" class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition shrink-0">添加</button>
+                        </div>
+                        <div id="raiseList" class="space-y-1.5 max-h-40 overflow-y-auto"></div>
+                        <p class="text-[9px] text-slate-400 mt-3 leading-relaxed">从所选月份起基数永久增加，可多次涨薪；年终奖基数自动取当年平均月薪。</p>
+                    </div>
+                </div>
+            </div>
+
             <div class="bg-slate-50 p-2 px-4 rounded-2xl border border-slate-100 shrink-0">
                 <span class="text-[10px] font-bold text-slate-400 block mb-1 uppercase">年份</span>
                 <select id="yearSelect" class="bg-transparent border-none text-slate-700 font-bold text-sm focus:ring-0 p-0 outline-none cursor-pointer"></select>
@@ -432,6 +454,41 @@
         } catch (e) {}
     }
 
+    // 涨薪记录持久化（按年份存储）
+    const SALARY_RAISE_KEY = 'salaryRaises_v1';
+    let salaryRaises = {}; // { 2026: [{ month: 3, increment: 2000 }, ...] }
+
+    function loadSalaryRaises() {
+        try {
+            const saved = localStorage.getItem(SALARY_RAISE_KEY);
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                if (parsed && typeof parsed === 'object') salaryRaises = parsed;
+            }
+        } catch (e) {}
+    }
+
+    function saveSalaryRaises() {
+        try { localStorage.setItem(SALARY_RAISE_KEY, JSON.stringify(salaryRaises)); } catch (e) {}
+    }
+
+    // 获取指定月份的有效月薪基数（累加该月及之前所有涨薪）
+    function getEffectiveBase(month) {
+        let base = uiSettings.baseSalary;
+        const raises = salaryRaises[currentYear] || [];
+        for (const r of raises) {
+            if (month >= r.month) base += r.increment;
+        }
+        return base;
+    }
+
+    // 计算当年平均月薪基数（用于年终奖计算）
+    function calcAvgMonthlyBase() {
+        let total = 0;
+        for (let m = 1; m <= 12; m++) total += getEffectiveBase(m);
+        return total / 12;
+    }
+
     // 界面参数持久化（月薪基数、薪资展示、出勤模式、年份、周起始）
     const uiSettings = {
         baseSalary: 10000,
@@ -597,6 +654,7 @@
     // 初始化：加载已保存的配置并填充表单
     loadTaxConfig();
     loadManualOt();
+    loadSalaryRaises();
     document.getElementById('insuranceRate').value = taxConfig.insuranceRate * 100;
     document.getElementById('specialDeduction').value = taxConfig.specialDeduction;
     document.getElementById('bonusMultiplier').value = taxConfig.bonusMultiplier;
@@ -735,7 +793,8 @@
             }
 
             // 日薪计算方式不变（分母为全月应出勤天数 salaryDays）
-            const wage = mCounts.salaryDays ? (salaryBase / mCounts.salaryDays) : 0;
+            const effectiveBase = getEffectiveBase(m + 1);
+            const wage = mCounts.salaryDays ? (effectiveBase / mCounts.salaryDays) : 0;
             const overtimePay = wage * mCounts.effOvertime;
 
             // 分场景计算基本薪资
@@ -744,7 +803,7 @@
             const isStartMonth = (m === startDateMonth);          // 起始日所在月（按日折算）
             const monthBase = isBeforeStart ? 0
                             : (isStartMonth ? (wage * mCounts.effStandardWork)
-                                            : salaryBase);
+                                            : effectiveBase);
             const totalIncome = monthBase + overtimePay;
 
             monthlyIncomes[m] = totalIncome;
@@ -809,11 +868,13 @@
             const totalIns = taxResults.reduce((s, r) => s + (r ? r.insurance : 0), 0);
             const baseAfterTax = taxResults.reduce((s, r, i) => s + (r ? r.afterTax : monthlyIncomes[i]), 0);
 
-            // —— 年终奖计算（按入职比例折算）——
+            // —— 年终奖计算（以当年平均月薪基数为基准）——
             const multiplier = taxConfig.bonusMultiplier;
-            const fullYearBase = 12 * salaryBase;
-            const prorationRatio = fullYearBase > 0 ? Math.min(1, yStats.baseSum / fullYearBase) : 0;
-            const bonusAmount = salaryBase * multiplier * prorationRatio;
+            const avgMonthlyBase = calcAvgMonthlyBase();
+            const startMonthIdx = parseInt(startDateStr.substring(5, 7), 10) - 1;
+            const monthsWorked = Math.max(1, 12 - startMonthIdx);
+            const prorationRatio = monthsWorked / 12;
+            const bonusAmount = avgMonthlyBase * multiplier * prorationRatio;
 
             // 单独计税
             const separate = calcBonusSeparateTax(bonusAmount);
@@ -854,9 +915,6 @@
             const effWorkDays = yStats.effStandardWork + yStats.effOvertime;
             const avgFmt = (val) => val.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
             const includeBonus = uiSettings.includeBonusInDaily;
-            // 实际工作月份数（从入职月到12月）
-            const startMonthIdx = parseInt(startDateStr.substring(5, 7), 10) - 1; // 0-11
-            const monthsWorked = Math.max(1, 12 - startMonthIdx);
             // 月薪 & 日薪：根据勾选决定是否含年终奖
             const monthlyPretax = includeBonus ? totalIncome : (yStats.baseSum + yStats.otSum);
             const monthlyAftertax = includeBonus ? totalAfterTax : baseAfterTax;
@@ -1052,7 +1110,8 @@
         saveUiSettings();
         // 切换年份时同步显示该年份的起始日
         document.getElementById('taxStartDate').value = getStartDate(currentYear);
-        fetchHolidayData(currentYear); 
+        fetchHolidayData(currentYear);
+        renderRaiseList();
     };
     document.getElementById('mode').onchange = (e) => { uiSettings.mode = e.target.value; saveUiSettings(); render(); };
     document.getElementById('baseSalary').oninput = (e) => { uiSettings.baseSalary = parseFloat(e.target.value) || 0; saveUiSettings(); render(); };
@@ -1104,7 +1163,61 @@
         if (panel.classList.contains('expanded') && !control.contains(e.target)) {
             panel.classList.remove('expanded');
         }
+        // 点击外部关闭涨薪面板
+        const rPanel = document.getElementById('raiseSettingsPanel');
+        const rControl = document.getElementById('raiseSettingsControl');
+        if (rPanel.classList.contains('expanded') && !rControl.contains(e.target)) {
+            rPanel.classList.remove('expanded');
+        }
     });
+
+    // 涨薪记录面板交互
+    function renderRaiseList() {
+        const list = document.getElementById('raiseList');
+        const raises = (salaryRaises[currentYear] || []).slice().sort((a, b) => a.month - b.month);
+        if (raises.length === 0) {
+            list.innerHTML = '<p class="text-[10px] text-slate-300 text-center py-2">暂无涨薪记录</p>';
+            return;
+        }
+        list.innerHTML = raises.map((r, i) => {
+            const effBase = getEffectiveBase(r.month);
+            return `<div class="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-1.5 text-xs">
+                <span class="font-bold text-slate-600">${r.month}月起 <span class="text-blue-600">+¥${r.increment.toLocaleString()}</span> <span class="text-slate-400">（基数 ¥${effBase.toLocaleString()}）</span></span>
+                <button onclick="removeRaise(${i})" class="text-slate-300 hover:text-rose-500 font-bold ml-2 transition">✕</button>
+            </div>`;
+        }).join('');
+    }
+    window.removeRaise = function(sortedIndex) {
+        const raises = salaryRaises[currentYear] || [];
+        // sortedIndex is position in sorted list; find actual month
+        const sorted = raises.slice().sort((a, b) => a.month - b.month);
+        const monthToRemove = sorted[sortedIndex].month;
+        salaryRaises[currentYear] = raises.filter(r => r.month !== monthToRemove);
+        if (salaryRaises[currentYear].length === 0) delete salaryRaises[currentYear];
+        saveSalaryRaises();
+        renderRaiseList();
+        render();
+    };
+
+    document.getElementById('raiseSettingsBtn').onclick = (e) => {
+        e.stopPropagation();
+        document.getElementById('raiseSettingsPanel').classList.toggle('expanded');
+    };
+    document.getElementById('addRaiseBtn').onclick = () => {
+        const month = parseInt(document.getElementById('raiseMonth').value, 10);
+        const amount = parseFloat(document.getElementById('raiseAmount').value) || 0;
+        if (amount <= 0) return;
+        if (!salaryRaises[currentYear]) salaryRaises[currentYear] = [];
+        // 同月只保留最后一次
+        salaryRaises[currentYear] = salaryRaises[currentYear].filter(r => r.month !== month);
+        salaryRaises[currentYear].push({ month, increment: amount });
+        salaryRaises[currentYear].sort((a, b) => a.month - b.month);
+        saveSalaryRaises();
+        document.getElementById('raiseAmount').value = '';
+        renderRaiseList();
+        render();
+    };
+    document.getElementById('raiseMonth').value = new Date().getMonth() + 1;
 
     fetchHolidayData(currentYear);
 </script>
