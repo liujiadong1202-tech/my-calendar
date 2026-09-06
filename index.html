@@ -90,9 +90,10 @@
                 </div>
                 <div id="taxSettingsPanel" class="tax-settings-panel absolute top-full right-0 w-[460px] max-w-[calc(100vw-2rem)] bg-white shadow-2xl rounded-2xl border border-slate-200 z-50">
                     <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        <div class="sm:col-span-3">
-                            <label class="text-[9px] font-bold text-slate-400 uppercase block mb-1">起始记薪计税日 <span class="text-slate-300 normal-case font-normal">(各年独立配置)</span></label>
+                        <div id="startDateGroup" class="sm:col-span-3">
+                            <label class="text-[9px] font-bold text-slate-400 uppercase block mb-1">起始记薪计税日 <span class="text-slate-300 normal-case font-normal">(仅入职年份配置)</span></label>
                             <input type="date" id="taxStartDate" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-700 focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none">
+                            <p id="startDateHint" class="hidden text-[9px] text-emerald-500 mt-1">已入职，后续年份按全年12个月计税</p>
                         </div>
                         <div>
                             <label class="text-[9px] font-bold text-slate-400 uppercase block mb-1">五险一金%</label>
@@ -473,6 +474,15 @@
         return total / 12;
     }
 
+    // 获取指定年份12月的最终月薪基数（base + 该年所有涨薪），用于跨年携带
+    function getYearEndBase(year) {
+        const base = uiSettings.baseSalary;
+        const raises = salaryRaises[year] || [];
+        let total = base;
+        for (const r of raises) total += r.increment;
+        return total;
+    }
+
     // 界面参数持久化（月薪基数、薪资展示、出勤模式、年份、周起始）
     const uiSettings = {
         baseSalary: 10000,
@@ -515,9 +525,21 @@
         } catch (e) {}
     }
 
-    // 获取指定年份的起始记薪计税日，默认1月1日
+    // 获取入职年份（最早设置了起始日的年份），无设置时返回null
+    function getJoinYear() {
+        const years = Object.keys(taxConfig.startDateByYear).map(Number).filter(y => taxConfig.startDateByYear[y]);
+        return years.length > 0 ? Math.min(...years) : null;
+    }
+
+    // 获取指定年份的起始记薪计税日
+    // 入职年份：返回用户设置的起始日
+    // 后续年份：返回1月1日（已入职，全年计税）
     function getStartDate(year) {
-        return taxConfig.startDateByYear[year] || `${year}-01-01`;
+        const joinYear = getJoinYear();
+        if (joinYear !== null && year === joinYear) {
+            return taxConfig.startDateByYear[year] || `${year}-01-01`;
+        }
+        return `${year}-01-01`;
     }
 
     // 七级累计预扣率表 [上限, 预扣率, 速算扣除数]
@@ -704,6 +726,22 @@
             showSalary ? el.classList.remove('salary-privacy-hidden') : el.classList.add('salary-privacy-hidden');
         });
 
+        // 起始日设置：仅入职年份可编辑，后续年份不显示
+        const joinYear = getJoinYear();
+        const isJoinYear = joinYear !== null && currentYear === joinYear;
+        const canSetStartDate = isJoinYear || joinYear === null;
+        const startDateGroup = document.getElementById('startDateGroup');
+        const taxStartDate = document.getElementById('taxStartDate');
+        const startDateHint = document.getElementById('startDateHint');
+        if (canSetStartDate) {
+            startDateGroup.classList.remove('hidden');
+            taxStartDate.disabled = false;
+            taxStartDate.classList.remove('opacity-50', 'cursor-not-allowed');
+            startDateHint.classList.add('hidden');
+        } else {
+            startDateGroup.classList.add('hidden');
+        }
+
         const annualGrid = document.getElementById('annualGrid');
         if (showSalary) annualGrid.className = "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10";
         else annualGrid.className = "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-10 max-w-4xl mx-auto";
@@ -766,7 +804,8 @@
 
                 // 起始日之后的有效工作日/加班日（用于薪资折算）
                 const isAfterStart = dateStr >= startDateStr;
-                const isStartDate = dateStr === startDateStr;
+                const isJoinYear = getJoinYear() === currentYear;
+                const isStartDate = isJoinYear && (dateStr === startDateStr);
                 if (isWorking && isAfterStart) {
                     if (status === 'work' || status === 'extra') mCounts.effStandardWork++;
                     if (status === 'overtime') mCounts.effOvertime++;
@@ -1123,9 +1162,23 @@
     }
 
     yearSelect.onchange = (e) => { 
+        const prevYear = currentYear;
         currentYear = parseInt(e.target.value);
         uiSettings.year = currentYear;
         saveUiSettings();
+        
+        // 跨年薪资携带：切换到新年度时，若该年度无涨薪记录，自动将上一年度最终月薪基数设为新年度基数
+        if (currentYear > prevYear) {
+            const prevRaises = salaryRaises[prevYear] || [];
+            const newRaises = salaryRaises[currentYear] || [];
+            if (newRaises.length === 0 && prevRaises.length > 0) {
+                const yearEndBase = getYearEndBase(prevYear);
+                uiSettings.baseSalary = yearEndBase;
+                document.getElementById('baseSalary').value = yearEndBase;
+                saveUiSettings();
+            }
+        }
+        
         // 切换年份时同步显示该年份的起始日
         document.getElementById('taxStartDate').value = getStartDate(currentYear);
         fetchHolidayData(currentYear);
