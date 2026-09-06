@@ -53,6 +53,8 @@
     .manual-mark { border-color: #f59e0b !important; box-shadow: inset 0 0 0 1.5px #f59e0b; }
     .manual-mark .day-num { color: #b45309; }
     .manual-mark .day-tag { color: #b45309; }
+    /* 涨薪弹窗 */
+    #raisePopup { box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); }
 </style>
 
 </head>
@@ -349,20 +351,6 @@
                         </div>
                     </div>
                 </div>
-                <div id="raiseSection" class="salary-related space-y-2 mb-6">
-                    <div class="bg-amber-50 border border-amber-100 rounded-xl p-3">
-                        <div class="flex items-center justify-between mb-2">
-                            <span class="text-[9px] font-bold text-amber-600 uppercase">当月月薪基数</span>
-                            <span id="raiseEffBase" class="text-xs font-black text-amber-700 font-mono">¥10,000</span>
-                        </div>
-                        <div class="flex gap-2">
-                            <input type="number" id="raiseInput" placeholder="涨薪金额" min="0" step="100" class="flex-1 min-w-0 bg-white border border-amber-200 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-700 focus:ring-2 focus:ring-amber-200 focus:border-amber-400 outline-none">
-                            <button id="raiseApplyBtn" type="button" class="bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition shrink-0">设置</button>
-                            <button id="raiseClearBtn" type="button" class="bg-slate-200 hover:bg-slate-300 text-slate-500 px-2 py-1.5 rounded-lg text-xs font-bold transition shrink-0">清除</button>
-                        </div>
-                    </div>
-                    <div id="raiseYearList" class="text-[9px] text-slate-400"></div>
-                </div>
                 <div id="calendarHeader" class="calendar-grid mb-2 text-center text-[10px] font-bold text-slate-300 select-none" title="点击切换周起始日"></div>
                 <div id="calendarGrid" class="calendar-grid"></div>
                 <div class="flex flex-wrap items-center justify-between gap-2 mt-3 text-[9px] font-bold text-slate-400">
@@ -374,7 +362,27 @@
                 </div>
             </div>
         </div>
-        <div class="lg:col-span-7"><div id="monthContainer" class="space-y-3"></div></div>
+        <div class="lg:col-span-7">
+            <div id="monthContainer" class="space-y-3"></div>
+            <div id="raisePopup" class="hidden fixed bg-white shadow-2xl rounded-2xl border border-amber-200 p-4 z-50 w-64">
+                <div class="flex items-center justify-between mb-3">
+                    <span class="text-xs font-bold text-amber-700">设置涨薪</span>
+                    <span id="raisePopupMonth" class="text-[10px] font-bold text-slate-400"></span>
+                </div>
+                <div class="text-center mb-3">
+                    <span id="raisePopupAmount" class="text-2xl font-black text-amber-600 font-mono">+¥0</span>
+                </div>
+                <div class="flex items-center justify-center gap-3 mb-3">
+                    <button id="raiseMinus" type="button" class="w-10 h-10 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 text-xl font-bold transition">−</button>
+                    <button id="raisePlus" type="button" class="w-10 h-10 rounded-full bg-amber-500 hover:bg-amber-600 text-white text-xl font-bold transition">+</button>
+                </div>
+                <p class="text-[9px] text-slate-400 text-center mb-3">每次调整 ¥500</p>
+                <div class="flex gap-2">
+                    <button id="raiseConfirm" type="button" class="flex-1 bg-amber-500 hover:bg-amber-600 text-white py-2 rounded-lg text-xs font-bold transition">确认</button>
+                    <button id="raiseCancel" type="button" class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-500 py-2 rounded-lg text-xs font-bold transition">取消</button>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -844,13 +852,19 @@
                 }
             }
             card.innerHTML = `
-                <div class="w-10 h-10 rounded-xl ${m === new Date().getMonth() && currentYear === new Date().getFullYear() ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-400'} flex items-center justify-center font-black shrink-0">${m+1}</div>
+                <div class="w-10 h-10 rounded-xl ${m === new Date().getMonth() && currentYear === new Date().getFullYear() ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-400'} flex items-center justify-center font-black shrink-0 relative cursor-pointer raise-trigger" data-month="${m+1}">${m+1}${(() => { const r = (salaryRaises[currentYear]||[]).find(x=>x.month===m+1); return r ? `<span class="absolute -top-1 -right-1 bg-amber-500 text-white text-[7px] font-bold px-1 rounded shadow">+${r.increment>=1000?(r.increment/1000)+'k':r.increment}</span>` : ''; })()}</div>
                 <div class="flex-1 min-w-0">
                     <div class="flex justify-between text-[10px] font-bold mb-1 uppercase tracking-tight"><span class="opacity-40">出勤 ${mCounts.passedWork}/${mCounts.totalWork}</span><span class="text-blue-600">${progress}%</span></div>
                     <div class="w-full bg-slate-100 h-1 rounded-full overflow-hidden"><div class="h-full bg-blue-600" style="width:${progress}%"></div></div>
                 </div>
                 ${salaryBlock}
             `;
+            // 涨薪触发：点击月份数字区域弹出选择器
+            const raiseTrigger = card.querySelector('.raise-trigger');
+            raiseTrigger.onclick = (e) => {
+                e.stopPropagation();
+                showRaisePopup(m + 1, raiseTrigger);
+            };
             container.appendChild(card);
         });
 
@@ -1074,19 +1088,6 @@
                     document.getElementById('taxRateDisplay').innerText = `--`;
                 }
             }
-            // 涨薪区域更新
-            const effBase = getEffectiveBase(m + 1);
-            const currentRaise = (salaryRaises[currentYear] || []).find(r => r.month === m + 1);
-            document.getElementById('raiseEffBase').innerText = `¥${effBase.toLocaleString()}`;
-            document.getElementById('raiseInput').value = currentRaise ? currentRaise.increment : '';
-            // 显示当年所有涨薪记录
-            const allRaises = (salaryRaises[currentYear] || []).slice().sort((a, b) => a.month - b.month);
-            const raiseListEl = document.getElementById('raiseYearList');
-            if (allRaises.length > 0) {
-                raiseListEl.innerHTML = allRaises.map(r => `<span class="inline-block bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded mr-1 mb-1">${r.month}月 +¥${r.increment.toLocaleString()}</span>`).join('');
-            } else {
-                raiseListEl.innerHTML = '<span class="text-slate-300">全年无涨薪记录</span>';
-            }
         }
         const headerRow = document.getElementById('calendarHeader');
         const weekLabels = ['日', '一', '二', '三', '四', '五', '六'];
@@ -1131,17 +1132,50 @@
     document.getElementById('resetYearManual').onclick = () => clearManualForPrefix(`${currentYear}-`);
     document.getElementById('includeBonusInDaily').onchange = (e) => { uiSettings.includeBonusInDaily = e.target.checked; saveUiSettings(); render(); };
 
-    // 涨薪按钮事件
-    document.getElementById('raiseApplyBtn').onclick = () => {
-        const amount = parseFloat(document.getElementById('raiseInput').value) || 0;
-        applyRaise(activeMonth + 1, amount);
+    // 涨薪弹窗逻辑
+    let raiseEditMonth = null;
+    let raiseEditAmount = 0;
+    const RAISE_STEP = 500;
+
+    function showRaisePopup(month, anchorEl) {
+        raiseEditMonth = month;
+        const existing = (salaryRaises[currentYear] || []).find(r => r.month === month);
+        raiseEditAmount = existing ? existing.increment : 0;
+        const popup = document.getElementById('raisePopup');
+        document.getElementById('raisePopupMonth').innerText = `${month}月`;
+        document.getElementById('raisePopupAmount').innerText = `+¥${raiseEditAmount.toLocaleString()}`;
+        // 定位到卡片右侧
+        const rect = anchorEl.getBoundingClientRect();
+        popup.style.top = (rect.top + window.scrollY - 20) + 'px';
+        popup.style.left = (rect.right + 10) + 'px';
+        popup.classList.remove('hidden');
+    }
+
+    function hideRaisePopup() {
+        document.getElementById('raisePopup').classList.add('hidden');
+        raiseEditMonth = null;
+    }
+
+    function updateRaisePopupDisplay() {
+        document.getElementById('raisePopupAmount').innerText = `+¥${raiseEditAmount.toLocaleString()}`;
+    }
+
+    document.getElementById('raisePlus').onclick = () => { raiseEditAmount += RAISE_STEP; updateRaisePopupDisplay(); };
+    document.getElementById('raiseMinus').onclick = () => { raiseEditAmount = Math.max(0, raiseEditAmount - RAISE_STEP); updateRaisePopupDisplay(); };
+    document.getElementById('raiseConfirm').onclick = () => {
+        if (raiseEditMonth !== null) {
+            applyRaise(raiseEditMonth, raiseEditAmount);
+        }
+        hideRaisePopup();
     };
-    document.getElementById('raiseClearBtn').onclick = () => {
-        removeRaiseForMonth(activeMonth + 1);
-        document.getElementById('raiseInput').value = '';
-    };
-    document.getElementById('raiseInput').addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') document.getElementById('raiseApplyBtn').click();
+    document.getElementById('raiseCancel').onclick = hideRaisePopup;
+
+    // 点击外部关闭涨薪弹窗
+    document.addEventListener('click', (e) => {
+        const popup = document.getElementById('raisePopup');
+        if (!popup.classList.contains('hidden') && !popup.contains(e.target) && !e.target.closest('.raise-trigger')) {
+            hideRaisePopup();
+        }
     });
 
     // 计税设置事件
