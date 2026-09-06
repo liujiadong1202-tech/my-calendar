@@ -54,11 +54,9 @@
     .manual-mark .day-num { color: #b45309; }
     .manual-mark .day-tag { color: #b45309; }
     /* 涨薪内联面板 */
-    .month-card { overflow: hidden; }
-    .month-card-inner { display: flex; align-items: center; gap: 1rem; transition: opacity 0.25s, transform 0.25s; }
-    .month-card.editing .month-card-main { opacity: 0.2; transform: translateX(-8px); pointer-events: none; }
-    .month-card .raise-panel { max-width: 0; opacity: 0; overflow: hidden; transition: max-width 0.3s cubic-bezier(0.4,0,0.2,1), opacity 0.25s, padding 0.3s; padding: 0; }
-    .month-card.editing .raise-panel { max-width: 320px; opacity: 1; padding: 0 0 0 12px; }
+    .month-card .raise-panel { max-width: 0; opacity: 0; overflow: hidden; transition: max-width 0.3s cubic-bezier(0.4,0,0.2,1), opacity 0.25s, padding 0.3s; padding-left: 0; padding-right: 0; }
+    .month-card.editing .raise-panel { max-width: 280px; opacity: 1; padding-left: 12px; }
+    .month-card.editing > .month-salary { opacity: 0 !important; max-width: 0 !important; min-width: 0 !important; padding-left: 0 !important; padding-right: 0 !important; border: 0 !important; overflow: hidden; }
 </style>
 
 </head>
@@ -839,23 +837,21 @@
             }
             const existingRaise = (salaryRaises[currentYear] || []).find(x => x.month === m + 1);
             const raiseAmt = existingRaise ? existingRaise.increment : 0;
+            // 给薪资块加 month-salary class 以便编辑时隐藏
+            const salaryBlockWithClass = salaryBlock ? salaryBlock.replace(/<div class="text-right min-w-\[110px\]/, '<div class="month-salary text-right min-w-[110px]') : '';
             card.innerHTML = `
-                <div class="month-card-inner">
-                    <div class="month-card-main flex items-center gap-4 flex-1 min-w-0">
-                        <div class="w-10 h-10 rounded-xl ${m === new Date().getMonth() && currentYear === new Date().getFullYear() ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-400'} flex items-center justify-center font-black shrink-0 relative cursor-pointer raise-trigger" data-month="${m+1}">${m+1}${raiseAmt ? `<span class="absolute -top-1 -right-1 bg-amber-500 text-white text-[7px] font-bold px-1 rounded shadow">+${raiseAmt>=1000?(raiseAmt/1000)+'k':raiseAmt}</span>` : ''}</div>
-                        <div class="flex-1 min-w-0">
-                            <div class="flex justify-between text-[10px] font-bold mb-1 uppercase tracking-tight"><span class="opacity-40">出勤 ${mCounts.passedWork}/${mCounts.totalWork}</span><span class="text-blue-600">${progress}%</span></div>
-                            <div class="w-full bg-slate-100 h-1 rounded-full overflow-hidden"><div class="h-full bg-blue-600" style="width:${progress}%"></div></div>
-                        </div>
-                        ${salaryBlock}
-                    </div>
-                    <div class="raise-panel flex items-center gap-2 shrink-0 border-l border-slate-100 pl-3">
-                        <button type="button" class="raise-panel-minus w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 text-sm font-bold transition">−</button>
-                        <span class="raise-panel-val text-xs font-black text-amber-600 font-mono w-16 text-center">+¥${raiseAmt.toLocaleString()}</span>
-                        <button type="button" class="raise-panel-plus w-7 h-7 rounded-full bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold transition">+</button>
-                        <button type="button" class="raise-panel-ok ml-1 bg-amber-500 hover:bg-amber-600 text-white text-[10px] font-bold px-2 py-1 rounded-lg transition">✓</button>
-                        <button type="button" class="raise-panel-x bg-slate-100 hover:bg-slate-200 text-slate-400 text-[10px] font-bold px-2 py-1 rounded-lg transition">✕</button>
-                    </div>
+                <div class="w-10 h-10 rounded-xl ${m === new Date().getMonth() && currentYear === new Date().getFullYear() ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-400'} flex items-center justify-center font-black shrink-0 relative cursor-pointer raise-trigger" data-month="${m+1}">${m+1}${raiseAmt ? `<span class="absolute -top-1 -right-1 bg-amber-500 text-white text-[7px] font-bold px-1 rounded shadow">+${raiseAmt>=1000?(raiseAmt/1000)+'k':raiseAmt}</span>` : ''}</div>
+                <div class="flex-1 min-w-0">
+                    <div class="flex justify-between text-[10px] font-bold mb-1 uppercase tracking-tight"><span class="opacity-40">出勤 ${mCounts.passedWork}/${mCounts.totalWork}</span><span class="text-blue-600">${progress}%</span></div>
+                    <div class="w-full bg-slate-100 h-1 rounded-full overflow-hidden"><div class="h-full bg-blue-600" style="width:${progress}%"></div></div>
+                </div>
+                ${salaryBlockWithClass}
+                <div class="raise-panel flex items-center gap-2 shrink-0 border-l border-slate-100 pl-3">
+                    <button type="button" class="raise-panel-minus w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 text-sm font-bold transition">−</button>
+                    <span class="raise-panel-val text-xs font-black text-amber-600 font-mono w-16 text-center">+¥${raiseAmt.toLocaleString()}</span>
+                    <button type="button" class="raise-panel-plus w-7 h-7 rounded-full bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold transition">+</button>
+                    <button type="button" class="raise-panel-ok ml-1 bg-amber-500 hover:bg-amber-600 text-white text-[10px] font-bold px-2 py-1 rounded-lg transition">✓</button>
+                    <button type="button" class="raise-panel-x bg-slate-100 hover:bg-slate-200 text-slate-400 text-[10px] font-bold px-2 py-1 rounded-lg transition">✕</button>
                 </div>
             `;
             // 涨薪触发：点击月份数字区域展开内联面板
