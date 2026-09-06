@@ -174,6 +174,28 @@
                             </div>
                         </div>
                     </div>
+                    <div class="border-t border-white/10 pt-6">
+                        <p class="text-[9px] font-bold opacity-50 tracking-widest mb-3 uppercase">年均统计</p>
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                            <div class="bg-white/5 rounded-xl p-3">
+                                <span class="text-[9px] font-bold opacity-50 block mb-1">平均税前月薪</span>
+                                <div id="yearAvgPretaxMonthly" class="text-sm font-bold text-white font-mono">¥0</div>
+                            </div>
+                            <div class="bg-white/5 rounded-xl p-3">
+                                <span class="text-[9px] font-bold text-emerald-400/60 block mb-1">平均税后月薪</span>
+                                <div id="yearAvgAftertaxMonthly" class="text-sm font-bold text-emerald-300 font-mono">¥0</div>
+                            </div>
+                            <div class="bg-white/5 rounded-xl p-3">
+                                <span class="text-[9px] font-bold opacity-50 block mb-1">平均税前日薪</span>
+                                <div id="yearAvgPretaxDaily" class="text-sm font-bold text-white font-mono">¥0</div>
+                            </div>
+                            <div class="bg-white/5 rounded-xl p-3">
+                                <span class="text-[9px] font-bold text-emerald-400/60 block mb-1">平均税后日薪</span>
+                                <div id="yearAvgAftertaxDaily" class="text-sm font-bold text-emerald-300 font-mono">¥0</div>
+                            </div>
+                        </div>
+                        <p class="text-[9px] opacity-50 mt-2">月薪按12个月均摊；日薪按实际出勤天数均摊（不含年终奖）</p>
+                    </div>
                 </div>
                 <div class="space-y-6">
                     <div>
@@ -815,6 +837,14 @@
             document.getElementById('yearTotalTax').innerText = `-¥${totalTax.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
             document.getElementById('yearTotalDeduct').innerText = `-¥${(totalIns + totalTax).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
             document.getElementById('yearAfterTaxIncome').innerText = `¥${totalAfterTax.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+
+            // —— 年均统计（不含年终奖的日均/月均）——
+            const totalWorkDays = yStats.standardWork + yStats.overtimeWork;
+            const avgFmt = (val) => val.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+            document.getElementById('yearAvgPretaxMonthly').innerText = `¥${avgFmt(totalIncome / 12)}`;
+            document.getElementById('yearAvgAftertaxMonthly').innerText = `¥${avgFmt(totalAfterTax / 12)}`;
+            document.getElementById('yearAvgPretaxDaily').innerText = `¥${totalWorkDays > 0 ? avgFmt((yStats.baseSum + yStats.otSum) / totalWorkDays) : '0'}`;
+            document.getElementById('yearAvgAftertaxDaily').innerText = `¥${totalWorkDays > 0 ? avgFmt(baseAfterTax / totalWorkDays) : '0'}`;
 
             // —— 年终奖板块摘要 ——
             document.getElementById('bonusMultBadge').innerText = `×${multiplier}`;
