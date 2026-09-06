@@ -667,7 +667,7 @@
         else annualGrid.className = "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-10 max-w-4xl mx-auto";
 
         container.innerHTML = '';
-        let yStats = { baseSum:0, otSum:0, standardWork:0, overtimeWork:0, weekendOff:0, holidayOff:0 };
+        let yStats = { baseSum:0, otSum:0, standardWork:0, overtimeWork:0, effStandardWork:0, effOvertime:0, weekendOff:0, holidayOff:0 };
         const monthlyIncomes = new Array(12).fill(0);
         const monthlyData = [];
 
@@ -750,6 +750,7 @@
             monthlyIncomes[m] = totalIncome;
             yStats.baseSum += monthBase; yStats.otSum += overtimePay;
             yStats.standardWork += mCounts.standardWork; yStats.overtimeWork += mCounts.overtimeWork;
+            yStats.effStandardWork += mCounts.effStandardWork; yStats.effOvertime += mCounts.effOvertime;
             yStats.weekendOff += mCounts.weekendOff; yStats.holidayOff += mCounts.holidayOff;
 
             monthlyData.push({ m, days, totalIncome, wage, overtimePay, mCounts });
@@ -850,6 +851,7 @@
 
             // —— 年均统计 ——
             const totalWorkDays = yStats.standardWork + yStats.overtimeWork;
+            const effWorkDays = yStats.effStandardWork + yStats.effOvertime;
             const avgFmt = (val) => val.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
             const includeBonus = uiSettings.includeBonusInDaily;
             // 实际工作月份数（从入职月到12月）
@@ -862,10 +864,10 @@
             const dailyAftertax = includeBonus ? totalAfterTax : baseAfterTax;
             document.getElementById('yearAvgPretaxMonthly').innerText = `¥${avgFmt(monthlyPretax / monthsWorked)}`;
             document.getElementById('yearAvgAftertaxMonthly').innerText = `¥${avgFmt(monthlyAftertax / monthsWorked)}`;
-            document.getElementById('yearAvgPretaxDaily').innerText = `¥${totalWorkDays > 0 ? avgFmt(dailyPretax / totalWorkDays) : '0'}`;
-            document.getElementById('yearAvgAftertaxDaily').innerText = `¥${totalWorkDays > 0 ? avgFmt(dailyAftertax / totalWorkDays) : '0'}`;
+            document.getElementById('yearAvgPretaxDaily').innerText = `¥${effWorkDays > 0 ? avgFmt(dailyPretax / effWorkDays) : '0'}`;
+            document.getElementById('yearAvgAftertaxDaily').innerText = `¥${effWorkDays > 0 ? avgFmt(dailyAftertax / effWorkDays) : '0'}`;
             // 更新说明文字
-            document.getElementById('avgNote').innerText = `月薪按${monthsWorked}个月均摊；日薪按${totalWorkDays}天出勤均摊（${includeBonus ? '含' : '不含'}年终奖）`;
+            document.getElementById('avgNote').innerText = `月薪按${monthsWorked}个月均摊；日薪按${effWorkDays}天出勤均摊（${includeBonus ? '含' : '不含'}年终奖）`;
 
             // —— 年终奖板块摘要 ——
             document.getElementById('bonusMultBadge').innerText = `×${multiplier}`;
