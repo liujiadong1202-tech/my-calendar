@@ -194,7 +194,13 @@
                                 <div id="yearAvgAftertaxDaily" class="text-sm font-bold text-emerald-300 font-mono">¥0</div>
                             </div>
                         </div>
-                        <p class="text-[9px] opacity-50 mt-2">月薪按12个月均摊；日薪按实际出勤天数均摊（不含年终奖）</p>
+                        <div class="flex flex-wrap items-center justify-between gap-2 mt-3">
+                            <p id="avgNote" class="text-[9px] opacity-50">月薪按12个月均摊；日薪按实际出勤天数均摊（不含年终奖）</p>
+                            <label class="flex items-center gap-1.5 cursor-pointer select-none">
+                                <span class="text-[9px] opacity-50">年终奖计入日薪</span>
+                                <input type="checkbox" id="includeBonusInDaily" class="w-3.5 h-3.5 text-emerald-500 rounded focus:ring-emerald-400 cursor-pointer">
+                            </label>
+                        </div>
                     </div>
                 </div>
                 <div class="space-y-6">
@@ -433,7 +439,8 @@
         mode: 'sun',
         year: 2026,
         weekStart: 0,
-        bonusExpanded: false
+        bonusExpanded: false,
+        includeBonusInDaily: false
     };
     const UI_STORAGE_KEY = 'uiSettings_v1';
 
@@ -448,6 +455,7 @@
                 if (typeof parsed.year === 'number') uiSettings.year = parsed.year;
                 if (typeof parsed.weekStart === 'number') uiSettings.weekStart = parsed.weekStart;
                 if (typeof parsed.bonusExpanded === 'boolean') uiSettings.bonusExpanded = parsed.bonusExpanded;
+                if (typeof parsed.includeBonusInDaily === 'boolean') uiSettings.includeBonusInDaily = parsed.includeBonusInDaily;
             }
         } catch (e) {}
     }
@@ -460,7 +468,8 @@
                 mode: uiSettings.mode,
                 year: uiSettings.year,
                 weekStart: uiSettings.weekStart,
-                bonusExpanded: uiSettings.bonusExpanded
+                bonusExpanded: uiSettings.bonusExpanded,
+                includeBonusInDaily: uiSettings.includeBonusInDaily
             }));
         } catch (e) {}
     }
@@ -600,6 +609,7 @@
     const bonusToggleIcon = document.getElementById('bonusToggleIcon');
     if (uiSettings.bonusExpanded) bonusBody.classList.add('expanded');
     bonusToggleIcon.style.transform = uiSettings.bonusExpanded ? 'rotate(180deg)' : '';
+    document.getElementById('includeBonusInDaily').checked = uiSettings.includeBonusInDaily;
 
     async function fetchHolidayData(y) {
         document.getElementById('titleYear').innerText = y;
@@ -838,13 +848,20 @@
             document.getElementById('yearTotalDeduct').innerText = `-¥${(totalIns + totalTax).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
             document.getElementById('yearAfterTaxIncome').innerText = `¥${totalAfterTax.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
 
-            // —— 年均统计（不含年终奖的日均/月均）——
+            // —— 年均统计 ——
             const totalWorkDays = yStats.standardWork + yStats.overtimeWork;
             const avgFmt = (val) => val.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+            const includeBonus = uiSettings.includeBonusInDaily;
+            // 月薪：始终按12个月均摊（含年终奖）
             document.getElementById('yearAvgPretaxMonthly').innerText = `¥${avgFmt(totalIncome / 12)}`;
             document.getElementById('yearAvgAftertaxMonthly').innerText = `¥${avgFmt(totalAfterTax / 12)}`;
-            document.getElementById('yearAvgPretaxDaily').innerText = `¥${totalWorkDays > 0 ? avgFmt((yStats.baseSum + yStats.otSum) / totalWorkDays) : '0'}`;
-            document.getElementById('yearAvgAftertaxDaily').innerText = `¥${totalWorkDays > 0 ? avgFmt(baseAfterTax / totalWorkDays) : '0'}`;
+            // 日薪：根据勾选决定是否含年终奖
+            const dailyPretax = includeBonus ? totalIncome : (yStats.baseSum + yStats.otSum);
+            const dailyAftertax = includeBonus ? totalAfterTax : baseAfterTax;
+            document.getElementById('yearAvgPretaxDaily').innerText = `¥${totalWorkDays > 0 ? avgFmt(dailyPretax / totalWorkDays) : '0'}`;
+            document.getElementById('yearAvgAftertaxDaily').innerText = `¥${totalWorkDays > 0 ? avgFmt(dailyAftertax / totalWorkDays) : '0'}`;
+            // 更新说明文字
+            document.getElementById('avgNote').innerText = `月薪按12个月均摊；日薪按实际出勤天数均摊（${includeBonus ? '含' : '不含'}年终奖）`;
 
             // —— 年终奖板块摘要 ——
             document.getElementById('bonusMultBadge').innerText = `×${multiplier}`;
@@ -1043,6 +1060,7 @@
     };
     document.getElementById('resetMonthManual').onclick = () => clearManualForPrefix(`${currentYear}-${String(activeMonth+1).padStart(2,'0')}-`);
     document.getElementById('resetYearManual').onclick = () => clearManualForPrefix(`${currentYear}-`);
+    document.getElementById('includeBonusInDaily').onchange = (e) => { uiSettings.includeBonusInDaily = e.target.checked; saveUiSettings(); render(); };
 
     // 计税设置事件
     document.getElementById('taxSettingsBtn').onclick = (e) => {
