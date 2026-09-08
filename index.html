@@ -947,7 +947,7 @@
             panelMinus.onclick = (e) => { e.stopPropagation(); tempRaise = Math.max(0, tempRaise - 500); syncPanelVal(); };
             panelPlus.onclick = (e) => { e.stopPropagation(); tempRaise += 500; syncPanelVal(); };
             panelOk.onclick = (e) => { e.stopPropagation(); applyRaise(m + 1, tempRaise); card.classList.remove('editing'); };
-            panelX.onclick = (e) => { e.stopPropagation(); card.classList.remove('editing'); };
+            panelX.onclick = (e) => { e.stopPropagation(); applyRaise(m + 1, 0); card.classList.remove('editing'); };
             container.appendChild(card);
         });
 
