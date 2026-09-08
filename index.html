@@ -474,12 +474,16 @@
         return total / 12;
     }
 
-    // 获取指定年份12月的最终月薪基数（base + 该年所有涨薪），用于跨年携带
+    // 获取指定年份最终月薪基数（base + 入职后涨薪之和），用于跨年携带
     function getYearEndBase(year) {
         const base = getBaseForYear(year);
         const raises = salaryRaises[year] || [];
+        const startDateStr = getStartDate(year);
+        const startMonth = parseInt(startDateStr.substring(5, 7), 10); // 1-12
         let total = base;
-        for (const r of raises) total += r.increment;
+        for (const r of raises) {
+            if (r.month >= startMonth) total += r.increment;
+        }
         return total;
     }
 
@@ -1189,11 +1193,17 @@
     }
 
     yearSelect.onchange = (e) => { 
+        const prevYear = currentYear;
         currentYear = parseInt(e.target.value);
         uiSettings.year = currentYear;
         saveUiSettings();
         
-        // 切换年份时加载该年度独立月薪基数（每年独立，互不影响）
+        // 向前切换年份：自动将上一年度最终基数（base + 入职后涨薪）带到下一年
+        if (currentYear > prevYear && baseSalaryByYear[currentYear] == null) {
+            setBaseForYear(currentYear, getYearEndBase(prevYear));
+        }
+        
+        // 加载该年度独立月薪基数
         document.getElementById('baseSalary').value = getBaseForYear(currentYear);
         
         // 切换年份时同步显示该年份的起始日
