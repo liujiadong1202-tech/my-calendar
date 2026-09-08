@@ -485,11 +485,6 @@
         return total / 12;
     }
 
-    // 获取下一年的基数（当前年基数 + 当年后涨薪），用于跨年携带
-    function getYearEndBase(year) {
-        return getBaseForYear(year + 1);
-    }
-
     // 界面参数持久化（月薪基数、薪资展示、出勤模式、年份、周起始）
     const uiSettings = {
         baseSalary: 10000,
@@ -500,9 +495,6 @@
         bonusExpanded: false,
         includeBonusInDaily: false
     };
-    const UI_STORAGE_KEY = 'uiSettings_v1';
-
-    // 初始月薪基数（入职时基数，所有年份从此递推）
     const UI_STORAGE_KEY = 'uiSettings_v1';
 
     // 计算指定年份的月薪基数 = 初始基数 + 入职起到该年之前所有涨薪之和
