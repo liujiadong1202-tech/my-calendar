@@ -1189,17 +1189,11 @@
     }
 
     yearSelect.onchange = (e) => { 
-        const prevYear = currentYear;
         currentYear = parseInt(e.target.value);
         uiSettings.year = currentYear;
         saveUiSettings();
         
-        // 首次访问新年度：若未设置过基数，自动从上一年度携带（base + 涨薪）
-        if (baseSalaryByYear[currentYear] == null && currentYear > prevYear) {
-            setBaseForYear(currentYear, getYearEndBase(prevYear));
-        }
-        
-        // 切换年份时加载该年度独立月薪基数
+        // 切换年份时加载该年度独立月薪基数（每年独立，互不影响）
         document.getElementById('baseSalary').value = getBaseForYear(currentYear);
         
         // 切换年份时同步显示该年份的起始日
