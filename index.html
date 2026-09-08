@@ -457,12 +457,23 @@
         try { localStorage.setItem(SALARY_RAISE_KEY, JSON.stringify(salaryRaises)); } catch (e) {}
     }
 
-    // 获取指定月份的有效月薪基数（累加该月及之前所有涨薪）
+    // 获取指定月份的有效月薪基数（初始基数 + 入职起到该月所有涨薪）
     function getEffectiveBase(month) {
-        let base = getBaseForYear(currentYear);
-        const raises = salaryRaises[currentYear] || [];
-        for (const r of raises) {
-            if (month >= r.month) base += r.increment;
+        const joinYear = getJoinYear();
+        let base = uiSettings.baseSalary;
+        if (joinYear !== null) {
+            for (let y = joinYear; y < currentYear; y++) {
+                const raises = salaryRaises[y] || [];
+                const sd = getStartDate(y);
+                const sm = parseInt(sd.substring(5, 7), 10);
+                for (const r of raises) { if (r.month >= sm) base += r.increment; }
+            }
+        }
+        const curRaises = salaryRaises[currentYear] || [];
+        const curSD = getStartDate(currentYear);
+        const curSM = parseInt(curSD.substring(5, 7), 10);
+        for (const r of curRaises) {
+            if (r.month >= curSM && month >= r.month) base += r.increment;
         }
         return base;
     }
@@ -474,17 +485,9 @@
         return total / 12;
     }
 
-    // 获取指定年份最终月薪基数（base + 入职后涨薪之和），用于跨年携带
+    // 获取下一年的基数（当前年基数 + 当年后涨薪），用于跨年携带
     function getYearEndBase(year) {
-        const base = getBaseForYear(year);
-        const raises = salaryRaises[year] || [];
-        const startDateStr = getStartDate(year);
-        const startMonth = parseInt(startDateStr.substring(5, 7), 10); // 1-12
-        let total = base;
-        for (const r of raises) {
-            if (r.month >= startMonth) total += r.increment;
-        }
-        return total;
+        return getBaseForYear(year + 1);
     }
 
     // 界面参数持久化（月薪基数、薪资展示、出勤模式、年份、周起始）
@@ -499,30 +502,37 @@
     };
     const UI_STORAGE_KEY = 'uiSettings_v1';
 
-    // 各年度独立月薪基数
-    const BASE_BY_YEAR_KEY = 'baseSalaryByYear_v1';
-    let baseSalaryByYear = {};
+    // 初始月薪基数（入职时基数，所有年份从此递推）
+    const UI_STORAGE_KEY = 'uiSettings_v1';
 
-    function loadBaseSalaryByYear() {
-        try {
-            const saved = localStorage.getItem(BASE_BY_YEAR_KEY);
-            if (saved) { const p = JSON.parse(saved); if (p && typeof p === 'object') baseSalaryByYear = p; }
-        } catch (e) {}
-    }
-
-    function saveBaseSalaryByYear() {
-        try { localStorage.setItem(BASE_BY_YEAR_KEY, JSON.stringify(baseSalaryByYear)); } catch (e) {}
-    }
-
+    // 计算指定年份的月薪基数 = 初始基数 + 入职起到该年之前所有涨薪之和
     function getBaseForYear(year) {
-        if (baseSalaryByYear[year] != null) return baseSalaryByYear[year];
-        // 首次访问某年：若无记录则取全局 baseSalary 作为初始值
-        return uiSettings.baseSalary;
+        const joinYear = getJoinYear();
+        let base = uiSettings.baseSalary;
+        if (joinYear === null) return base;
+        for (let y = joinYear; y < year; y++) {
+            const raises = salaryRaises[y] || [];
+            const sd = getStartDate(y);
+            const sm = parseInt(sd.substring(5, 7), 10);
+            for (const r of raises) { if (r.month >= sm) base += r.increment; }
+        }
+        return base;
     }
 
+    // 设置指定年份的基数 → 反推初始基数
     function setBaseForYear(year, val) {
-        baseSalaryByYear[year] = val;
-        saveBaseSalaryByYear();
+        const joinYear = getJoinYear();
+        let raiseSum = 0;
+        if (joinYear !== null) {
+            for (let y = joinYear; y < year; y++) {
+                const raises = salaryRaises[y] || [];
+                const sd = getStartDate(y);
+                const sm = parseInt(sd.substring(5, 7), 10);
+                for (const r of raises) { if (r.month >= sm) raiseSum += r.increment; }
+            }
+        }
+        uiSettings.baseSalary = val - raiseSum;
+        saveUiSettings();
     }
 
     function loadUiSettings() {
@@ -691,7 +701,6 @@
     loadTaxConfig();
     loadManualOt();
     loadSalaryRaises();
-    loadBaseSalaryByYear();
     document.getElementById('insuranceRate').value = taxConfig.insuranceRate * 100;
     document.getElementById('specialDeduction').value = taxConfig.specialDeduction;
     document.getElementById('bonusMultiplier').value = taxConfig.bonusMultiplier;
@@ -1193,20 +1202,10 @@
     }
 
     yearSelect.onchange = (e) => { 
-        const prevYear = currentYear;
         currentYear = parseInt(e.target.value);
         uiSettings.year = currentYear;
         saveUiSettings();
-        
-        // 向前切换年份：自动将上一年度最终基数（base + 入职后涨薪）带到下一年
-        if (currentYear > prevYear && baseSalaryByYear[currentYear] == null) {
-            setBaseForYear(currentYear, getYearEndBase(prevYear));
-        }
-        
-        // 加载该年度独立月薪基数
         document.getElementById('baseSalary').value = getBaseForYear(currentYear);
-        
-        // 切换年份时同步显示该年份的起始日
         document.getElementById('taxStartDate').value = getStartDate(currentYear);
         fetchHolidayData(currentYear);
     };
