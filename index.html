@@ -795,7 +795,13 @@
                 const holidayName = holidayMap.get(dateStr);
                 const extraName = extraMap.get(dateStr);
                 const dayOfWeek = new Date(currentYear, m, d).getDay();
-                if (dayOfWeek >= 1 && dayOfWeek <= 5) mCounts.salaryDays++;
+                // 应出勤/计薪天数：非节假日的周一至周五 + 周末调休上班日 + 周末法定节假日
+                const isWknd = (dayOfWeek === 0 || dayOfWeek === 6);
+                if (isWknd) {
+                    if (extraName || holidayName) mCounts.salaryDays++;   // 周末调休上班日 / 周末法定节假日
+                } else if (!holidayName) {
+                    mCounts.salaryDays++;                                  // 非节假日的周一至周五
+                }
 
                 // —— 推荐值：按出勤模式自动计算 ——
                 let autoStatus = "work", label = "班", isWorking = true;
