@@ -66,6 +66,7 @@
             <div>
                 <h1 class="text-2xl font-black text-slate-900 tracking-tight"><span id="titleYear">2026</span> 出勤助手</h1>
                 <p class="text-slate-400 text-xs font-bold mt-1 uppercase tracking-widest">国务院办公厅法定节假日标准</p>
+                <p id="holidayDataHint" class="text-red-500 text-xs font-bold mt-1" style="display:none;">⚠ 节假日数据加载失败，出勤/计薪可能不准（已用缓存）</p>
             </div>
 
 
@@ -736,21 +737,49 @@
     bonusToggleIcon.style.transform = uiSettings.bonusExpanded ? 'rotate(180deg)' : '';
     document.getElementById('includeBonusInDaily').checked = uiSettings.includeBonusInDaily;
 
+    const HOLIDAY_HINT = document.getElementById('holidayDataHint');
+    function setHolidayHint(show) {
+        if (HOLIDAY_HINT) HOLIDAY_HINT.style.display = show ? 'block' : 'none';
+    }
+    function applyHolidayData(data, y) {
+        holidayMap.clear(); extraMap.clear();
+        (data && Array.isArray(data.days) ? data.days : []).forEach(item => {
+            if (item.isOffDay) holidayMap.set(item.date, item.name);
+            else extraMap.set(item.date, item.name || '班');
+        });
+        refreshStatutoryConstants();
+    }
     async function fetchHolidayData(y) {
         document.getElementById('titleYear').innerText = y;
         document.getElementById('statYearLabel').innerText = y;
         document.getElementById('bgYearDisplay').innerText = y;
-        const url = `https://cdn.jsdelivr.net/gh/NateScarlet/holiday-cn@master/${y}.json`;
-        try {
-            const res = await fetch(url);
-            const data = await res.json();
-            holidayMap.clear(); extraMap.clear();
-            data.days.forEach(item => {
-                if (item.isOffDay) holidayMap.set(item.date, item.name);
-                else extraMap.set(item.date, item.name || '班');
-            });
-            refreshStatutoryConstants();
-        } catch (err) {}
+        const CACHE_KEY = `holidayData_v1_${y}`;
+        // 数据源依次回退：jsdelivr → fastly → 官方 GitHub raw
+        const sources = [
+            `https://cdn.jsdelivr.net/gh/NateScarlet/holiday-cn@master/${y}.json`,
+            `https://fastly.jsdelivr.net/gh/NateScarlet/holiday-cn@master/${y}.json`,
+            `https://raw.githubusercontent.com/NateScarlet/holiday-cn/master/${y}.json`
+        ];
+        let loaded = false;
+        for (const url of sources) {
+            try {
+                const res = await fetch(url);
+                if (!res.ok) continue;
+                const data = await res.json();
+                if (!data || !Array.isArray(data.days) || data.days.length === 0) continue;
+                applyHolidayData(data, y);
+                try { localStorage.setItem(CACHE_KEY, JSON.stringify(data)); } catch (e) {}
+                loaded = true;
+                break;
+            } catch (err) { /* 换下一个源 */ }
+        }
+        if (!loaded) {
+            // 全部数据源失败：回退到上次成功加载的缓存
+            let cached = null;
+            try { cached = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null'); } catch (e) {}
+            if (cached) { applyHolidayData(cached, y); loaded = true; }
+        }
+        setHolidayHint(!loaded);   // 无数据且无缓存时给出可见提示
         render();
     }
     function toggleManual(dateStr, autoStatus) {
