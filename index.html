@@ -393,6 +393,9 @@
     // localStorage 持久化键
     const TAX_STORAGE_KEY = 'taxConfig_v1';
 
+    // 法定节假日总天数常数（元旦1 + 春节4 + 清明1 + 劳动节2 + 端午1 + 中秋1 + 国庆3）
+    const STATUTORY_HOLIDAY_DAYS = 13;
+
     // 从 localStorage 加载已保存的配置
     function loadTaxConfig() {
         try {
@@ -787,7 +790,7 @@
         const startDateStr = getStartDate(currentYear);
 
         for (let m = 0; m < 12; m++) {
-            let mCounts = { totalDays:0, standardWork:0, overtimeWork:0, weekendOff:0, holidayOff:0, salaryDays:0, passedWork:0, totalWork:0, pureWork:0, extraWork:0, effStandardWork:0, effOvertime:0 };
+            let mCounts = { totalDays:0, standardWork:0, overtimeWork:0, weekendOff:0, holidayOff:0, salaryDays:0, weekdayHolidayDays:0, passedWork:0, totalWork:0, pureWork:0, extraWork:0, effStandardWork:0, effOvertime:0 };
             let days = [];
             mCounts.totalDays = new Date(currentYear, m + 1, 0).getDate();
             for (let d = 1; d <= mCounts.totalDays; d++) {
@@ -795,12 +798,13 @@
                 const holidayName = holidayMap.get(dateStr);
                 const extraName = extraMap.get(dateStr);
                 const dayOfWeek = new Date(currentYear, m, d).getDay();
-                // 应出勤/计薪天数：非节假日的周一至周五 + 周末调休上班日 + 周末法定节假日
+                // 计薪天数：周一至周五 + 周末调休上班日；周内法定假先计数，月末统一按13天常数校正
                 const isWknd = (dayOfWeek === 0 || dayOfWeek === 6);
-                if (isWknd) {
-                    if (extraName || holidayName) mCounts.salaryDays++;   // 周末调休上班日 / 周末法定节假日
-                } else if (!holidayName) {
-                    mCounts.salaryDays++;                                  // 非节假日的周一至周五
+                if (!isWknd) {
+                    mCounts.salaryDays++;                                // 周一至周五（全部）
+                    if (holidayName) mCounts.weekdayHolidayDays++;       // 落在周内的节假日
+                } else if (extraName) {
+                    mCounts.salaryDays++;                                // 周末调休上班日
                 }
 
                 // —— 推荐值：按出勤模式自动计算 ——
@@ -853,7 +857,10 @@
                             toggleable: status === 'overtime' || status === 'weekend-off' || status === 'holiday' });
             }
 
-            // 日薪计算方式不变（分母为全月应出勤天数 salaryDays）
+            // 法定节假日常数校正：+13 − 本月落在周内的节假日（周末落在的假日在13常数内天然计入）
+            mCounts.salaryDays += STATUTORY_HOLIDAY_DAYS - mCounts.weekdayHolidayDays;
+
+            // 日薪计算方式不变（分母为全月计薪天数 salaryDays）
             const effectiveBase = getEffectiveBase(m + 1);
             const wage = mCounts.salaryDays ? (effectiveBase / mCounts.salaryDays) : 0;
             const overtimePay = wage * mCounts.effOvertime;
