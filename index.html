@@ -393,8 +393,34 @@
     // localStorage 持久化键
     const TAX_STORAGE_KEY = 'taxConfig_v1';
 
-    // 法定节假日总天数常数（元旦1 + 春节4 + 清明1 + 劳动节2 + 端午1 + 中秋1 + 国庆3）
-    const STATUTORY_HOLIDAY_DAYS = 13;
+    // 法定节假日常数（2025年新规：元旦1 + 春节4 + 清明1 + 劳动节2 + 端午1 + 中秋1 + 国庆3）
+    const STATUTORY_BY_NAME = [
+        ['元旦', 1], ['春节', 4], ['清明', 1],
+        ['劳动', 2], ['端午', 1], ['中秋', 1], ['国庆', 3]
+    ];
+    // 每月对应节日的法定常数：key = '年份-月索引(0-11)'，在节日日历加载后计算
+    let statutoryByMonth = {};
+
+    // 按节日名归组（同一假期跨度同名），把常数记入节日最早出现日期所在月份
+    function refreshStatutoryConstants() {
+        statutoryByMonth = {};
+        const nameFirstMonth = {};
+        for (const [d, name] of holidayMap) {
+            if (!name) continue;
+            const m = parseInt(d.substring(5, 7), 10) - 1;
+            if (nameFirstMonth[name] == null || m < nameFirstMonth[name]) nameFirstMonth[name] = m;
+        }
+        for (const [name, m] of Object.entries(nameFirstMonth)) {
+            let c = 0;
+            for (const [keyword, v] of STATUTORY_BY_NAME) {
+                if (name.includes(keyword)) { c += v; break; }
+            }
+            if (c > 0) {
+                const key = `${currentYear}-${m}`;
+                statutoryByMonth[key] = (statutoryByMonth[key] || 0) + c;
+            }
+        }
+    }
 
     // 从 localStorage 加载已保存的配置
     function loadTaxConfig() {
@@ -723,6 +749,7 @@
                 if (item.isOffDay) holidayMap.set(item.date, item.name);
                 else extraMap.set(item.date, item.name || '班');
             });
+            refreshStatutoryConstants();
         } catch (err) {}
         render();
     }
@@ -857,8 +884,9 @@
                             toggleable: status === 'overtime' || status === 'weekend-off' || status === 'holiday' });
             }
 
-            // 法定节假日常数校正：+13 − 本月落在周内的节假日（周末落在的假日在13常数内天然计入）
-            mCounts.salaryDays += STATUTORY_HOLIDAY_DAYS - mCounts.weekdayHolidayDays;
+            // 法定节日常数：本月所属节日的法定天数（如中秋月+1、国庆月+3、春节月+4）
+            const statute = statutoryByMonth[`${currentYear}-${m}`] || 0;
+            mCounts.salaryDays += statute - mCounts.weekdayHolidayDays;
 
             // 日薪计算方式不变（分母为全月计薪天数 salaryDays）
             const effectiveBase = getEffectiveBase(m + 1);
