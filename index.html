@@ -389,7 +389,7 @@
                 <div id="calendarHeader" class="calendar-grid mb-2 text-center text-[10px] font-bold text-slate-300 select-none" title="点击切换周起始日"></div>
                 <div id="calendarGrid" class="calendar-grid"></div>
                 <div class="flex flex-wrap items-center justify-between gap-2 mt-3 text-[9px] font-bold text-slate-400">
-                    <span>点击日期弹出详情窗口：修正「加班/休」或请假（<span class="inline-block w-2 h-2 rounded border" style="border-color:#f59e0b"></span>琥珀边框 = 状态手动修正，<span class="inline-block w-2 h-2 rounded border" style="border-color:#f472b6"></span>粉色 = 有请假记录）</span>
+                    <span>上班/调休补班/加班日点击弹出请假窗口（<span class="inline-block w-2 h-2 rounded border" style="border-color:#f472b6"></span>粉色边框 = 有请假记录）；休息日/法定节假日不可操作</span>
                     <div class="flex gap-2 shrink-0">
                         <button id="resetMonthManual" type="button" class="bg-slate-100 hover:bg-slate-200 text-slate-500 px-2 py-1 rounded-lg transition">重置本月</button>
                         <button id="resetYearManual" type="button" class="bg-slate-100 hover:bg-slate-200 text-slate-500 px-2 py-1 rounded-lg transition">重置本年</button>
@@ -669,19 +669,12 @@
         const d = new Date(currentYear, parseInt(day.dateStr.substring(5, 7), 10) - 1, parseInt(day.dateStr.substring(8, 10), 10));
         const wk = ['日', '一', '二', '三', '四', '五', '六'][d.getDay()];
         const leave = leaveMap[day.dateStr];
-        const manual = manualOt[day.dateStr];
         const statusNames = { work: '班', extra: '调休补班', overtime: '加班', 'weekend-off': '休息', holiday: '节假日', leave: '请假·全天' };
 
         let html = `
             <div class="flex justify-between items-center mb-3">
                 <span class="text-sm font-black text-slate-700">${d.getMonth() + 1}月${d.getDate()}日 周${wk}</span>
                 <span class="text-[9px] font-bold px-1.5 py-0.5 rounded ${day.isLeave ? 'bg-pink-100 text-pink-600' : 'bg-slate-100 text-slate-500'}">${day.isStartDate ? '入职日' : (statusNames[day.status] || day.label)}</span>
-            </div>
-            <div class="text-[9px] font-bold text-slate-400 uppercase mb-1">状态修正（琥珀边框 = 手动）</div>
-            <div class="grid grid-cols-3 gap-1.5 mb-3">
-                <button data-act="manual" data-v="overtime" class="py-1 rounded-lg text-[10px] font-bold transition ${manual === 'overtime' ? 'bg-blue-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}">加班</button>
-                <button data-act="manual" data-v="weekend-off" class="py-1 rounded-lg text-[10px] font-bold transition ${manual === 'weekend-off' ? 'bg-blue-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}">休</button>
-                <button data-act="manual" data-v="auto" class="py-1 rounded-lg text-[10px] font-bold transition ${!manual ? 'bg-blue-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}">自动</button>
             </div>`;
         if (leave) {
             const desc = leave.type === 'day'
@@ -711,8 +704,7 @@
             btn.onclick = (e) => {
                 e.stopPropagation();
                 const act = btn.dataset.act;
-                if (act === 'manual') setDayManual(day.dateStr, btn.dataset.v === 'auto' ? null : btn.dataset.v);
-                else if (act === 'leave-day') applyLeave(day.dateStr, 'day');
+                if (act === 'leave-day') applyLeave(day.dateStr, 'day');
                 else if (act === 'leave-hours') applyLeave(day.dateStr, 'hours', document.getElementById('leaveStart').value, document.getElementById('leaveEnd').value);
                 else if (act === 'clearleave') clearLeave(day.dateStr);
                 else closeDayModal();
@@ -721,15 +713,8 @@
         overlay.classList.remove('hidden');
         overlay.classList.add('flex');
     }
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDayModal(); });
 
-    // 状态修正（加速弹窗内显式设置，null=恢复自动值）
-    function setDayManual(dateStr, status) {
-        if (status === null) delete manualOt[dateStr];
-        else manualOt[dateStr] = status;
-        saveManualOt();
-        render();
-        closeDayModal();
-    }
     document.addEventListener('click', (e) => {
         const ov = document.getElementById('dayEditOverlay');
         if (ov && ov.classList.contains('flex') && e.target === ov) closeDayModal();
@@ -1137,7 +1122,7 @@
 
                 // —— 手动修正：手动值优先，未点按则采用推荐值 ——
                 const manual = manualOt[dateStr];
-                const status = manual || autoStatus;
+                let status = manual || autoStatus;
                 const isManual = Boolean(manual);
                 if (isManual) {
                     if (status === 'overtime') { label = '加班'; isWorking = true; }
@@ -1552,10 +1537,13 @@
         for(let i=0; i<offset; i++) grid.appendChild(document.createElement('div'));
         days.forEach(day => {
             const cell = document.createElement('div');
-            cell.className = `day-cell status-${day.status} ${day.isToday ? 'today-mark' : ''} ${day.isStartDate ? 'start-date-mark' : ''} ${day.isLeave ? 'leave-mark' : ''} ${day.toggleable ? 'day-toggleable' : ''} ${day.isManual ? 'manual-mark' : ''}`;
+            const canLeave = ['work', 'extra', 'overtime', 'leave'].includes(day.status);
+            cell.className = `day-cell status-${day.status} ${day.isToday ? 'today-mark' : ''} ${day.isStartDate ? 'start-date-mark' : ''} ${day.isLeave ? 'leave-mark' : ''} ${canLeave ? 'day-toggleable' : ''} ${day.isManual ? 'manual-mark' : ''}`;
             cell.innerHTML = `<span class="day-num">${day.d}</span><span class="day-tag">${day.isStartDate ? '入职' : day.label}</span>`;
-            cell.title = '点击打开详情（修正状态 / 请假）';
-            cell.onclick = () => openDayModal(day);
+            if (canLeave) {
+                cell.title = '点击弹出请假窗口';
+                cell.onclick = () => openDayModal(day);
+            }
             grid.appendChild(cell);
         });
     }
