@@ -101,6 +101,11 @@
                             <input type="number" id="insuranceRate" value="22.5" min="0" max="100" step="0.1" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-700 focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none">
                         </div>
                         <div>
+                            <label class="text-[9px] font-bold text-slate-400 uppercase block mb-1">五险一金封顶线 (元/月)</label>
+                            <input type="number" id="insuranceCap" value="0" min="0" step="500" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-700 focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none">
+                            <p class="text-[8px] text-slate-300 mt-0.5">0=不封顶；去年月均收入超线时按线缴</p>
+                        </div>
+                        <div>
                             <label class="text-[9px] font-bold text-slate-400 uppercase block mb-1">专项附加扣除 (元/月)</label>
                             <input type="number" id="specialDeduction" value="0" min="0" step="100" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-700 focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none">
                         </div>
@@ -109,7 +114,7 @@
                             <input type="number" id="bonusMultiplier" value="2" min="0" step="0.5" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-700 focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none">
                         </div>
                     </div>
-                    <p class="text-[9px] text-slate-400 mt-2 leading-relaxed">说明：起始日之前月份显示"未入职"且不计薪计税；起始日当月按之后实际出勤折算薪资，减除费用仍按整月5000；切换年份时各年独立配置。年终奖按入职比例折算（实际基数累计 ÷ 12×月薪），对比单独/合并两种计税方式。</p>
+                    <p class="text-[9px] text-slate-400 mt-2 leading-relaxed">说明：起始日之前月份显示"未入职"且不计薪计税；起始日当月按之后实际出勤折算薪资，减除费用仍按整月5000；切换年份时各年独立配置。五险一金按月薪基数计缴，基数超过封顶线（或该月单独调的封顶数）时按封顶线计缴。年终奖按入职比例折算（实际基数累计 ÷ 12×月薪），对比单独/合并两种计税方式。</p>
                 </div>
             </div>
 
@@ -353,6 +358,12 @@
                             <div class="bg-white/15 rounded-lg p-2"><span class="text-[9px] font-bold opacity-70 uppercase block">累计已预扣</span><div id="cumulativeTaxDisplay" class="text-xs font-black">¥0.00</div></div>
                             <div class="bg-white/15 rounded-lg p-2"><span class="text-[9px] font-bold opacity-70 uppercase block">适用预扣率</span><div id="taxRateDisplay" class="text-xs font-black">0%</div></div>
                         </div>
+                        <div class="flex items-center gap-2 mt-3 bg-white/15 rounded-lg p-2" id="insuranceCapRow">
+                            <span class="text-[9px] font-bold opacity-70 uppercase shrink-0">本月封顶</span>
+                            <input type="number" id="insuranceCapMonth" min="0" step="500" placeholder="跟随全局" class="w-24 bg-white/90 border border-white/40 rounded px-1.5 py-0.5 text-[10px] font-bold text-slate-700 outline-none focus:ring-2 focus:ring-white/60">
+                            <button id="insuranceCapMonthClear" type="button" class="text-[9px] font-bold bg-white/25 hover:bg-white/40 rounded px-1.5 py-0.5 transition" title="清除本月单独封顶，恢复跟随全局">清除</button>
+                            <span id="insuranceBaseHint" class="text-[8px] opacity-75 ml-auto"></span>
+                        </div>
                     </div>
                 </div>
                 <div id="calendarHeader" class="calendar-grid mb-2 text-center text-[10px] font-bold text-slate-300 select-none" title="点击切换周起始日"></div>
@@ -387,9 +398,19 @@
     const taxConfig = { 
         insuranceRate: 0.225, 
         specialDeduction: 0,
+        insuranceCap: 0,            // 五险一金缴费基数封顶线（元/月），0=不封顶
+        insuranceCapByMonth: {},    // 某月单独调整封顶线：{ '2026-07': 32000 }
         bonusMultiplier: 2,
         startDateByYear: {}  // { 2026: '2026-07-15', 2027: '2027-01-01' }
     };
+
+    // 取某月的五险一金封顶线：优先当月手动调整值，否则用全局封顶线，0=不封顶
+    function getInsuranceCap(monthIdx) {
+        const key = `${currentYear}-${monthIdx}`;
+        const override = taxConfig.insuranceCapByMonth ? taxConfig.insuranceCapByMonth[key] : undefined;
+        const cap = (typeof override === 'number' && !isNaN(override)) ? override : taxConfig.insuranceCap;
+        return cap > 0 ? cap : 0;
+    }
 
     // localStorage 持久化键
     const TAX_STORAGE_KEY = 'taxConfig_v1';
@@ -431,6 +452,10 @@
                 const parsed = JSON.parse(saved);
                 if (typeof parsed.insuranceRate === 'number') taxConfig.insuranceRate = parsed.insuranceRate;
                 if (typeof parsed.specialDeduction === 'number') taxConfig.specialDeduction = parsed.specialDeduction;
+                if (typeof parsed.insuranceCap === 'number') taxConfig.insuranceCap = parsed.insuranceCap;
+                if (parsed.insuranceCapByMonth && typeof parsed.insuranceCapByMonth === 'object') {
+                    taxConfig.insuranceCapByMonth = parsed.insuranceCapByMonth;
+                }
                 if (typeof parsed.bonusMultiplier === 'number') taxConfig.bonusMultiplier = parsed.bonusMultiplier;
                 if (parsed.startDateByYear && typeof parsed.startDateByYear === 'object') {
                     taxConfig.startDateByYear = parsed.startDateByYear;
@@ -444,6 +469,8 @@
             localStorage.setItem(TAX_STORAGE_KEY, JSON.stringify({
                 insuranceRate: taxConfig.insuranceRate,
                 specialDeduction: taxConfig.specialDeduction,
+                insuranceCap: taxConfig.insuranceCap,
+                insuranceCapByMonth: taxConfig.insuranceCapByMonth,
                 bonusMultiplier: taxConfig.bonusMultiplier,
                 startDateByYear: taxConfig.startDateByYear
             }));
@@ -653,8 +680,10 @@
             let tax = 0, rate = 0, quick = 0, taxable = 0, ins = 0;
             if (income > 0) {
                 cumIncome += income;
-                // 五险一金按用户输入的月薪基数（固定值，不折算、不含加班费）
-                ins = salaryBase * insuranceRate;
+                // 五险一金按缴费基数（月薪基数）计缴：基数超过封顶线时按封顶线计缴
+                const insCap = getInsuranceCap(monthIdx);
+                const insBase = (insCap > 0 && salaryBase > insCap) ? insCap : salaryBase;
+                ins = insBase * insuranceRate;
                 cumIns += ins;
                 cumDeduction += 5000 + specialDeduction;
                 taxable = cumIncome - cumIns - cumDeduction;
@@ -726,6 +755,7 @@
     document.getElementById('insuranceRate').value = taxConfig.insuranceRate * 100;
     document.getElementById('specialDeduction').value = taxConfig.specialDeduction;
     document.getElementById('bonusMultiplier').value = taxConfig.bonusMultiplier;
+    document.getElementById('insuranceCap').value = taxConfig.insuranceCap || 0;
     document.getElementById('taxStartDate').value = getStartDate(currentYear);
     document.getElementById('baseSalary').value = getBaseForYear(currentYear);
     document.getElementById('showSalary').checked = uiSettings.showSalary;
@@ -1241,6 +1271,20 @@
                 }
             }
         }
+        // 五险一金封顶：本月单独调整值同步 + 实际缴费基数提示
+        const capInput = document.getElementById('insuranceCapMonth');
+        if (capInput) {
+            const key = `${currentYear}-${m + 1}`;
+            const override = taxConfig.insuranceCapByMonth[key];
+            capInput.value = (typeof override === 'number' && !isNaN(override)) ? override : '';
+        }
+        const capHint = document.getElementById('insuranceBaseHint');
+        if (capHint) {
+            const insBase = (taxInfo && !taxInfo.isNotJoined && taxConfig.insuranceRate > 0 && taxInfo.insurance > 0)
+                ? Math.round(taxInfo.insurance / taxConfig.insuranceRate) : 0;
+            capHint.innerText = insBase > 0 ? `缴费基数 ¥${insBase.toLocaleString()}` : '';
+        }
+
         const headerRow = document.getElementById('calendarHeader');
         const weekLabels = ['日', '一', '二', '三', '四', '五', '六'];
         if (weekStart === 1) weekLabels.push(weekLabels.shift());
@@ -1318,6 +1362,28 @@
         taxConfig.bonusMultiplier = Math.max(0, parseFloat(e.target.value) || 0); 
         saveTaxConfig();
         render(); 
+    };
+    // 五险一金封顶线（全局）
+    document.getElementById('insuranceCap').oninput = (e) => { 
+        taxConfig.insuranceCap = Math.max(0, parseFloat(e.target.value) || 0); 
+        saveTaxConfig();
+        render(); 
+    };
+    // 本月单独调整封顶线（作用于活动月份）
+    document.getElementById('insuranceCapMonth').oninput = (e) => {
+        const key = `${currentYear}-${activeMonth + 1}`;
+        const v = Math.max(0, parseFloat(e.target.value) || 0);
+        if (v > 0) taxConfig.insuranceCapByMonth[key] = v;
+        else delete taxConfig.insuranceCapByMonth[key];
+        saveTaxConfig();
+        render();
+    };
+    document.getElementById('insuranceCapMonthClear').onclick = () => {
+        const key = `${currentYear}-${activeMonth + 1}`;
+        delete taxConfig.insuranceCapByMonth[key];
+        document.getElementById('insuranceCapMonth').value = '';
+        saveTaxConfig();
+        render();
     };
 
     // 点击外部关闭计税设置面板
