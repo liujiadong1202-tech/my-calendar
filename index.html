@@ -21,9 +21,6 @@
     .status-weekend-off { background: #f8fafc; color: #cbd5e1; } 
     .status-overtime { background: #dbeafe; color: #2563eb; border-color: #bfdbfe; } 
     .status-extra { background: #1e40af; color: #ffffff; } 
-    .status-leave { background: #fdf2f8; color: #db2777; border-color: #fbcfe8; }
-    .leave-mark { box-shadow: inset 0 0 0 1.5px #f472b6; }
-    .leave-mark .day-tag { color: #db2777; }
     
     .today-mark { outline: 2px solid #2563eb; outline-offset: 1px; z-index: 10; }
     
@@ -350,7 +347,6 @@
                                 <span class="text-slate-300">+</span>
                                 <span id="mStatHolidayOff" class="text-orange-500" title="节假日">0</span>
                             </div>
-                            <span id="mStatLeave" class="text-[9px] font-bold text-pink-500 block mt-0.5"></span>
                         </div>
                     </div>
                 </div>
@@ -389,7 +385,7 @@
                 <div id="calendarHeader" class="calendar-grid mb-2 text-center text-[10px] font-bold text-slate-300 select-none" title="点击切换周起始日"></div>
                 <div id="calendarGrid" class="calendar-grid"></div>
                 <div class="flex flex-wrap items-center justify-between gap-2 mt-3 text-[9px] font-bold text-slate-400">
-                    <span>点击日期弹出详情窗口：修正「加班/休」或请假（<span class="inline-block w-2 h-2 rounded border" style="border-color:#f59e0b"></span>琥珀边框 = 状态手动修正，<span class="inline-block w-2 h-2 rounded border" style="border-color:#f472b6"></span>粉色 = 有请假记录）</span>
+                    <span>点击日期可切换「加班 / 休」（<span class="inline-block w-2 h-2 rounded border" style="border-color:#f59e0b"></span>琥珀边框 = 手动修正，未点按即采用推荐值）</span>
                     <div class="flex gap-2 shrink-0">
                         <button id="resetMonthManual" type="button" class="bg-slate-100 hover:bg-slate-200 text-slate-500 px-2 py-1 rounded-lg transition">重置本月</button>
                         <button id="resetYearManual" type="button" class="bg-slate-100 hover:bg-slate-200 text-slate-500 px-2 py-1 rounded-lg transition">重置本年</button>
@@ -401,10 +397,6 @@
             <div id="monthContainer" class="space-y-3"></div>
         </div>
     </div>
-</div>
-
-<div id="dayEditOverlay" class="fixed inset-0 bg-black/30 z-[60] hidden items-center justify-center p-4">
-    <div id="dayEditPanel" class="bg-white rounded-2xl shadow-2xl border border-slate-100 p-4 w-[300px] max-h-[85vh] overflow-y-auto"></div>
 </div>
 
 <script>
@@ -595,145 +587,6 @@
     function saveSalaryRaises() {
         try { localStorage.setItem(SALARY_RAISE_KEY, JSON.stringify(salaryRaises)); } catch (e) {}
     }
-
-    // ================= 请假 =================
-    // 请假记录（键为日期 YYYY-MM-DD）：{ type:'day' } 或 { type:'hours', start:'HH:MM', end:'HH:MM' }
-    const LEAVE_STORAGE_KEY = 'leaveRecords_v1';
-    let leaveMap = {};
-
-    function loadLeave() {
-        try {
-            const saved = localStorage.getItem(LEAVE_STORAGE_KEY);
-            if (saved) {
-                const parsed = JSON.parse(saved);
-                if (parsed && typeof parsed === 'object') leaveMap = parsed;
-            }
-        } catch (e) {}
-    }
-    function saveLeave() {
-        try { localStorage.setItem(LEAVE_STORAGE_KEY, JSON.stringify(leaveMap)); } catch (e) {}
-    }
-
-    // 工时口径：上班 11:00-20:00，其中 12:00-13:00、18:00-19:00 为休息 → 每天计薪 7 小时
-    const LEAVE_PAID_HOURS = 7;
-    const LEAVE_REST_BREAKS = [[720, 780], [1080, 1140]]; // 分钟 [起, 止)
-
-    // 计算请假时段内实际计薪分钟数（扣除休息时间，且只算落在工作时段内的部分）
-    function computeLeaveMinutes(start, end) {
-        const toMin = s => {
-            const p = String(s || '').split(':');
-            const h = parseInt(p[0], 10), m = parseInt(p[1], 10);
-            return (isNaN(h) || isNaN(m)) ? NaN : h * 60 + m;
-        };
-        let s = toMin(start), e = toMin(end);
-        if (isNaN(s) || isNaN(e)) return 0;
-        if (e < s) { const t = s; s = e; e = t; }   // 起止填反自动交换
-        const span = Math.max(0, Math.min(e, 1200) - Math.max(s, 660)); // 与 11:00-20:00 求交
-        if (span <= 0) return 0;
-        let rest = 0;
-        for (const [a, b] of LEAVE_REST_BREAKS) {
-            if (b <= s || a >= e) continue;
-            rest += Math.min(e, b) - Math.max(s, a);
-        }
-        return Math.max(0, span - rest);
-    }
-
-    function closeDayModal() {
-        const ov = document.getElementById('dayEditOverlay');
-        if (ov) { ov.classList.add('hidden'); ov.classList.remove('flex'); }
-    }
-
-    function applyLeave(dateStr, type, start, end) {
-        if (type === 'hours') {
-            const mins = computeLeaveMinutes(start, end);
-            if (mins > 0) leaveMap[dateStr] = { type: 'hours', start, end };
-            else delete leaveMap[dateStr];
-        } else {
-            leaveMap[dateStr] = { type: 'day' };
-        }
-        saveLeave();
-        render();
-        closeDayModal();
-    }
-    function clearLeave(dateStr) {
-        delete leaveMap[dateStr];
-        saveLeave();
-        render();
-        closeDayModal();
-    }
-
-    // 点击日期弹出的细则窗口
-    function openDayModal(day) {
-        const overlay = document.getElementById('dayEditOverlay');
-        const panel = document.getElementById('dayEditPanel');
-        const d = new Date(currentYear, parseInt(day.dateStr.substring(5, 7), 10) - 1, parseInt(day.dateStr.substring(8, 10), 10));
-        const wk = ['日', '一', '二', '三', '四', '五', '六'][d.getDay()];
-        const leave = leaveMap[day.dateStr];
-        const manual = manualOt[day.dateStr];
-        const statusNames = { work: '班', extra: '调休补班', overtime: '加班', 'weekend-off': '休息', holiday: '节假日', leave: '请假·全天' };
-
-        let html = `
-            <div class="flex justify-between items-center mb-3">
-                <span class="text-sm font-black text-slate-700">${d.getMonth() + 1}月${d.getDate()}日 周${wk}</span>
-                <span class="text-[9px] font-bold px-1.5 py-0.5 rounded ${day.isLeave ? 'bg-pink-100 text-pink-600' : 'bg-slate-100 text-slate-500'}">${day.isStartDate ? '入职日' : (statusNames[day.status] || day.label)}</span>
-            </div>
-            <div class="text-[9px] font-bold text-slate-400 uppercase mb-1">状态修正（琥珀边框 = 手动）</div>
-            <div class="grid grid-cols-3 gap-1.5 mb-3">
-                <button data-act="manual" data-v="overtime" class="py-1 rounded-lg text-[10px] font-bold transition ${manual === 'overtime' ? 'bg-blue-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}">加班</button>
-                <button data-act="manual" data-v="weekend-off" class="py-1 rounded-lg text-[10px] font-bold transition ${manual === 'weekend-off' ? 'bg-blue-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}">休</button>
-                <button data-act="manual" data-v="auto" class="py-1 rounded-lg text-[10px] font-bold transition ${!manual ? 'bg-blue-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}">自动</button>
-            </div>`;
-        if (leave) {
-            const desc = leave.type === 'day'
-                ? '全天请假 · 当日不计薪'
-                : `小时请假 ${leave.start} ~ ${leave.end}（实际 ${(computeLeaveMinutes(leave.start, leave.end) / 60).toFixed(1)} 小时）`;
-            html += `
-            <div class="text-[9px] font-bold text-slate-400 uppercase mb-1">请假</div>
-            <div class="bg-pink-50 rounded-lg p-2 mb-2 flex justify-between items-center">
-                <span class="text-[10px] font-bold text-pink-600">${desc}</span>
-                <button data-act="clearleave" class="text-[9px] font-bold bg-white hover:bg-pink-100 text-pink-500 border border-pink-200 rounded px-1.5 py-0.5 transition">取消</button>
-            </div>`;
-        } else {
-            html += `
-            <div class="text-[9px] font-bold text-slate-400 uppercase mb-1">请假</div>
-            <button data-act="leave-day" class="w-full py-1.5 rounded-lg text-[10px] font-bold bg-pink-500 hover:bg-pink-600 text-white transition mb-2">全天请假（当日不计薪）</button>
-            <div class="flex items-center gap-1.5 mb-1.5">
-                <input type="time" id="leaveStart" value="11:00" class="w-16 bg-slate-50 border border-slate-200 rounded px-1 py-1 text-[10px] font-bold text-slate-700 outline-none text-center">
-                <span class="text-slate-400 text-[10px]">~</span>
-                <input type="time" id="leaveEnd" value="12:00" class="w-16 bg-slate-50 border border-slate-200 rounded px-1 py-1 text-[10px] font-bold text-slate-700 outline-none text-center">
-                <button data-act="leave-hours" class="flex-1 py-1 rounded-lg text-[10px] font-bold bg-pink-100 hover:bg-pink-200 text-pink-600 transition border border-pink-200">按小时请假</button>
-            </div>
-            <p class="text-[8px] text-slate-400 leading-relaxed">上班 11:00-20:00，12:00-13:00 / 18:00-19:00 为休息。跨休息段的请假不扣休息时间薪资；每天计薪 7 小时，小时薪 = 日薪 ÷ 7</p>`;
-        }
-        html += `<button data-act="close" class="w-full py-1 rounded-lg text-[10px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-500 transition mt-3">关闭</button>`;
-        panel.innerHTML = html;
-        panel.querySelectorAll('[data-act]').forEach(btn => {
-            btn.onclick = (e) => {
-                e.stopPropagation();
-                const act = btn.dataset.act;
-                if (act === 'manual') setDayManual(day.dateStr, btn.dataset.v === 'auto' ? null : btn.dataset.v);
-                else if (act === 'leave-day') applyLeave(day.dateStr, 'day');
-                else if (act === 'leave-hours') applyLeave(day.dateStr, 'hours', document.getElementById('leaveStart').value, document.getElementById('leaveEnd').value);
-                else if (act === 'clearleave') clearLeave(day.dateStr);
-                else closeDayModal();
-            };
-        });
-        overlay.classList.remove('hidden');
-        overlay.classList.add('flex');
-    }
-
-    // 状态修正（加速弹窗内显式设置，null=恢复自动值）
-    function setDayManual(dateStr, status) {
-        if (status === null) delete manualOt[dateStr];
-        else manualOt[dateStr] = status;
-        saveManualOt();
-        render();
-        closeDayModal();
-    }
-    document.addEventListener('click', (e) => {
-        const ov = document.getElementById('dayEditOverlay');
-        if (ov && ov.classList.contains('flex') && e.target === ov) closeDayModal();
-    });
 
     // 获取指定月份的有效月薪基数（初始基数 + 入职起到该月所有涨薪）
     function getEffectiveBase(month) {
@@ -973,7 +826,6 @@
     loadTaxConfig();
     loadManualOt();
     loadSalaryRaises();
-    loadLeave();
     document.getElementById('insuranceRate').value = taxConfig.insuranceRate * 100;
     document.getElementById('specialDeduction').value = taxConfig.specialDeduction;
     document.getElementById('bonusMultiplier').value = taxConfig.bonusMultiplier;
@@ -1097,7 +949,7 @@
         const startDateStr = getStartDate(currentYear);
 
         for (let m = 0; m < 12; m++) {
-            let mCounts = { totalDays:0, standardWork:0, overtimeWork:0, weekendOff:0, holidayOff:0, salaryDays:0, weekdayHolidayDays:0, passedWork:0, totalWork:0, pureWork:0, extraWork:0, effStandardWork:0, effOvertime:0, dayLeaveCount:0, leaveHours:0 };
+            let mCounts = { totalDays:0, standardWork:0, overtimeWork:0, weekendOff:0, holidayOff:0, salaryDays:0, weekdayHolidayDays:0, passedWork:0, totalWork:0, pureWork:0, extraWork:0, effStandardWork:0, effOvertime:0 };
             let days = [];
             mCounts.totalDays = new Date(currentYear, m + 1, 0).getDate();
             for (let d = 1; d <= mCounts.totalDays; d++) {
@@ -1144,25 +996,9 @@
                     else { label = status === 'holiday' ? (holidayName || '假') : '休'; isWorking = false; }
                 }
 
-                // —— 请假记录：仅对计薪日（班/补班/加班）生效 ——
-                let isLeave = false;
-                const leaveRec = leaveMap[dateStr];
-                if (leaveRec && (status === 'work' || status === 'extra' || status === 'overtime')) {
-                    isLeave = true;
-                    if (leaveRec.type === 'day') {
-                        status = 'leave'; label = '假'; isWorking = false;   // 全天请假：当日不计薪
-                    } else {
-                        const mins = computeLeaveMinutes(leaveRec.start, leaveRec.end);
-                        mCounts.leaveHours += mins / 60;                    // 小时请假：扣除休息段后的实际小时
-                        const h = mins / 60;
-                        label = `假${h.toFixed(h === Math.floor(h) ? 0 : 1)}h`;
-                    }
-                }
-
                 if (status === 'holiday') { mCounts.holidayOff++; }
                 else if (status === 'extra') { mCounts.standardWork++; mCounts.extraWork++; }
                 else if (status === 'overtime') { mCounts.overtimeWork++; }
-                else if (status === 'leave') { mCounts.dayLeaveCount++; }   // 全天请假：不计工作不统计出勤
                 else if (status === 'weekend-off') { mCounts.weekendOff++; }
                 else { mCounts.standardWork++; mCounts.pureWork++; }
                 if (isWorking) { mCounts.totalWork++; if (dateStr <= todayStr) mCounts.passedWork++; }
@@ -1176,8 +1012,8 @@
                     if (status === 'overtime') mCounts.effOvertime++;
                 }
 
-                days.push({ d, dateStr, status, autoStatus, label, isToday: dateStr === todayStr, isStartDate, isManual, isLeave,
-                            toggleable: status === 'overtime' || status === 'weekend-off' || status === 'holiday' || status === 'leave' });
+                days.push({ d, dateStr, status, autoStatus, label, isToday: dateStr === todayStr, isStartDate, isManual,
+                            toggleable: status === 'overtime' || status === 'weekend-off' || status === 'holiday' });
             }
 
             // 法定节日常数：本月所属节日的法定天数（如中秋月+1、国庆月+3、春节月+4）
@@ -1196,11 +1032,7 @@
             const monthBase = isBeforeStart ? 0
                             : (isStartMonth ? (wage * mCounts.effStandardWork)
                                             : effectiveBase);
-            // 请假扣薪：全天请假=1天日薪；小时请假=小时薪（日薪÷7，休息时间不计入请假时长）
-            // 入职当月已按实际出勤折算（全天请假未计入 effStandardWork），不再重复扣
-            const leaveDeduction = (isStartMonth ? 0 : mCounts.dayLeaveCount) * wage
-                                 + mCounts.leaveHours * (wage / LEAVE_PAID_HOURS);
-            const totalIncome = Math.max(0, monthBase + overtimePay - leaveDeduction);
+            const totalIncome = monthBase + overtimePay;
 
             monthlyIncomes[m] = totalIncome;
             yStats.baseSum += monthBase; yStats.otSum += overtimePay;
@@ -1468,20 +1300,6 @@
         document.getElementById('mStatWeekendOff').innerText = mCounts.weekendOff;
         document.getElementById('mStatHolidayOff').innerText = mCounts.holidayOff;
 
-        // 请假汇总（当月）
-        const leaveNote = document.getElementById('mStatLeave');
-        if (leaveNote) {
-            const ded = mCounts.dayLeaveCount * wage + mCounts.leaveHours * wage / LEAVE_PAID_HOURS;
-            if (mCounts.dayLeaveCount > 0 || mCounts.leaveHours > 0) {
-                const parts = [];
-                if (mCounts.dayLeaveCount > 0) parts.push(`请假${mCounts.dayLeaveCount}天`);
-                if (mCounts.leaveHours > 0) parts.push(`${mCounts.leaveHours.toFixed(mCounts.leaveHours % 1 ? 1 : 0)}h`);
-                leaveNote.innerText = `${parts.join(' + ')} −¥${ded.toFixed(0)}`;
-            } else {
-                leaveNote.innerText = '';
-            }
-        }
-
         if(showSalary) {
             const afterTaxTotal = taxInfo && taxInfo.isNotJoined ? 0 : (taxInfo ? taxInfo.afterTax : total);
             document.getElementById('totalDisplay').innerText = `¥${afterTaxTotal.toLocaleString(undefined, {minimumFractionDigits:2})}`;
@@ -1552,10 +1370,12 @@
         for(let i=0; i<offset; i++) grid.appendChild(document.createElement('div'));
         days.forEach(day => {
             const cell = document.createElement('div');
-            cell.className = `day-cell status-${day.status} ${day.isToday ? 'today-mark' : ''} ${day.isStartDate ? 'start-date-mark' : ''} ${day.isLeave ? 'leave-mark' : ''} ${day.toggleable ? 'day-toggleable' : ''} ${day.isManual ? 'manual-mark' : ''}`;
+            cell.className = `day-cell status-${day.status} ${day.isToday ? 'today-mark' : ''} ${day.isStartDate ? 'start-date-mark' : ''} ${day.toggleable ? 'day-toggleable' : ''} ${day.isManual ? 'manual-mark' : ''}`;
             cell.innerHTML = `<span class="day-num">${day.d}</span><span class="day-tag">${day.isStartDate ? '入职' : day.label}</span>`;
-            cell.title = '点击打开详情（修正状态 / 请假）';
-            cell.onclick = () => openDayModal(day);
+            if (day.toggleable) {
+                cell.title = '点击切换 加班/休';
+                cell.onclick = () => toggleManual(day.dateStr, day.autoStatus);
+            }
             grid.appendChild(cell);
         });
     }
