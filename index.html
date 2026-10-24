@@ -103,7 +103,23 @@
                         <div>
                             <label class="text-[9px] font-bold text-slate-400 uppercase block mb-1">五险一金封顶线 (元/月)</label>
                             <input type="number" id="insuranceCap" value="0" min="0" step="500" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-700 focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none">
-                            <p class="text-[8px] text-slate-300 mt-0.5">0=不封顶；去年月均收入超线时按线缴</p>
+                            <p class="text-[8px] text-slate-300 mt-0.5">0=不封顶；调整月前适用</p>
+                        </div>
+                        <div>
+                            <label class="text-[9px] font-bold text-slate-400 uppercase block mb-1">每年调整月份</label>
+                            <select id="insuranceCapAdjustMonth" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-700 focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none cursor-pointer">
+                                <option value="0">不调整</option>
+                                <option value="1">1月</option><option value="2">2月</option><option value="3">3月</option>
+                                <option value="4">4月</option><option value="5">5月</option><option value="6">6月</option>
+                                <option value="7">7月</option><option value="8">8月</option><option value="9">9月</option>
+                                <option value="10">10月</option><option value="11">11月</option><option value="12">12月</option>
+                            </select>
+                            <p class="text-[8px] text-slate-300 mt-0.5">自该月起用调整后封顶线</p>
+                        </div>
+                        <div>
+                            <label class="text-[9px] font-bold text-slate-400 uppercase block mb-1">调整后封顶线 (元/月)</label>
+                            <input type="number" id="insuranceCapAfter" value="0" min="0" step="500" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-700 focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none">
+                            <p class="text-[8px] text-slate-300 mt-0.5">0=沿用原封顶线</p>
                         </div>
                         <div>
                             <label class="text-[9px] font-bold text-slate-400 uppercase block mb-1">专项附加扣除 (元/月)</label>
@@ -114,7 +130,7 @@
                             <input type="number" id="bonusMultiplier" value="2" min="0" step="0.5" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-700 focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none">
                         </div>
                     </div>
-                    <p class="text-[9px] text-slate-400 mt-2 leading-relaxed">说明：起始日之前月份显示"未入职"且不计薪计税；起始日当月按之后实际出勤折算薪资，减除费用仍按整月5000；切换年份时各年独立配置。五险一金按月薪基数计缴，基数超过封顶线（或该月单独调的封顶数）时按封顶线计缴。年终奖按入职比例折算（实际基数累计 ÷ 12×月薪），对比单独/合并两种计税方式。</p>
+                    <p class="text-[9px] text-slate-400 mt-2 leading-relaxed">说明：起始日之前月份显示"未入职"且不计薪计税；起始日当月按之后实际出勤折算薪资，减除费用仍按整月5000；切换年份时各年独立配置。五险一金按月薪基数计缴，基数超过封顶线时按封顶线计缴；封顶线可在每年调整月自动切换为新的封顶线，某月也可在税卡"本月封顶"里单独调整（优先级最高）。年终奖按入职比例折算（实际基数累计 ÷ 12×月薪），对比单独/合并两种计税方式。</p>
                 </div>
             </div>
 
@@ -399,6 +415,8 @@
         insuranceRate: 0.225, 
         specialDeduction: 0,
         insuranceCap: 0,            // 五险一金缴费基数封顶线（元/月），0=不封顶
+        insuranceCapAdjustMonth: 0, // 每年封顶线调整月份（1-12），0=不调整
+        insuranceCapAfter: 0,       // 自调整月起使用的新封顶线（元/月）
         insuranceCapByMonth: {},    // 某月单独调整封顶线：{ '2026-07': 32000 }
         bonusMultiplier: 2,
         startDateByYear: {}  // { 2026: '2026-07-15', 2027: '2027-01-01' }
@@ -408,8 +426,13 @@
     function getInsuranceCap(monthIdx) {
         const key = `${currentYear}-${monthIdx}`;
         const override = taxConfig.insuranceCapByMonth ? taxConfig.insuranceCapByMonth[key] : undefined;
-        const cap = (typeof override === 'number' && !isNaN(override)) ? override : taxConfig.insuranceCap;
-        return cap > 0 ? cap : 0;
+        // 优先级：某月手动调整值 > 每年调整月后的新封顶线 > 全局封顶线
+        if (typeof override === 'number' && !isNaN(override)) return override > 0 ? override : 0;
+        const adjMonth = taxConfig.insuranceCapAdjustMonth || 0;
+        if (adjMonth >= 1 && adjMonth <= 12 && monthIdx >= adjMonth && (taxConfig.insuranceCapAfter || 0) > 0) {
+            return taxConfig.insuranceCapAfter;
+        }
+        return taxConfig.insuranceCap > 0 ? taxConfig.insuranceCap : 0;
     }
 
     // localStorage 持久化键
@@ -453,6 +476,8 @@
                 if (typeof parsed.insuranceRate === 'number') taxConfig.insuranceRate = parsed.insuranceRate;
                 if (typeof parsed.specialDeduction === 'number') taxConfig.specialDeduction = parsed.specialDeduction;
                 if (typeof parsed.insuranceCap === 'number') taxConfig.insuranceCap = parsed.insuranceCap;
+                if (typeof parsed.insuranceCapAdjustMonth === 'number') taxConfig.insuranceCapAdjustMonth = parsed.insuranceCapAdjustMonth;
+                if (typeof parsed.insuranceCapAfter === 'number') taxConfig.insuranceCapAfter = parsed.insuranceCapAfter;
                 if (parsed.insuranceCapByMonth && typeof parsed.insuranceCapByMonth === 'object') {
                     taxConfig.insuranceCapByMonth = parsed.insuranceCapByMonth;
                 }
@@ -470,6 +495,8 @@
                 insuranceRate: taxConfig.insuranceRate,
                 specialDeduction: taxConfig.specialDeduction,
                 insuranceCap: taxConfig.insuranceCap,
+                insuranceCapAdjustMonth: taxConfig.insuranceCapAdjustMonth,
+                insuranceCapAfter: taxConfig.insuranceCapAfter,
                 insuranceCapByMonth: taxConfig.insuranceCapByMonth,
                 bonusMultiplier: taxConfig.bonusMultiplier,
                 startDateByYear: taxConfig.startDateByYear
@@ -756,6 +783,8 @@
     document.getElementById('specialDeduction').value = taxConfig.specialDeduction;
     document.getElementById('bonusMultiplier').value = taxConfig.bonusMultiplier;
     document.getElementById('insuranceCap').value = taxConfig.insuranceCap || 0;
+    document.getElementById('insuranceCapAdjustMonth').value = String(taxConfig.insuranceCapAdjustMonth || 0);
+    document.getElementById('insuranceCapAfter').value = taxConfig.insuranceCapAfter || 0;
     document.getElementById('taxStartDate').value = getStartDate(currentYear);
     document.getElementById('baseSalary').value = getBaseForYear(currentYear);
     document.getElementById('showSalary').checked = uiSettings.showSalary;
@@ -1368,6 +1397,17 @@
         taxConfig.insuranceCap = Math.max(0, parseFloat(e.target.value) || 0); 
         saveTaxConfig();
         render(); 
+    };
+    // 每年封顶线调整月份与调整后封顶线
+    document.getElementById('insuranceCapAdjustMonth').onchange = (e) => {
+        taxConfig.insuranceCapAdjustMonth = parseInt(e.target.value) || 0;
+        saveTaxConfig();
+        render();
+    };
+    document.getElementById('insuranceCapAfter').oninput = (e) => {
+        taxConfig.insuranceCapAfter = Math.max(0, parseFloat(e.target.value) || 0);
+        saveTaxConfig();
+        render();
     };
     // 本月单独调整封顶线（作用于活动月份）
     document.getElementById('insuranceCapMonth').oninput = (e) => {
