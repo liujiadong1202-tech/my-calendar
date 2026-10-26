@@ -133,7 +133,7 @@
                             <input type="number" id="bonusMultiplier" value="2" min="0" step="0.5" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-700 focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none">
                         </div>
                     </div>
-                    <p class="text-[9px] text-slate-400 mt-2 leading-relaxed">说明：起始日之前月份显示"未入职"且不计薪计税；起始日当月按之后实际出勤折算薪资，减除费用仍按整月5000；切换年份时各年独立配置。五险一金按月薪基数计缴，基数超过封顶线时按封顶线计缴；封顶线按年份独立存储，调整前/调整月/调整后逐年配置，切到下一年时"调整前"自动继承上一年的"调整后"。社保缴费基数：入职当年按当年月薪基数；以后各年按上一年度税前月平均工资性收入（按实际有收入月份平均，自动模拟计算），超过封顶线按封顶线计缴，低于按实际数值显示在税卡中。年终奖按入职比例折算（实际基数累计 ÷ 12×月薪），对比单独/合并两种计税方式。</p>
+                    <p class="text-[9px] text-slate-400 mt-2 leading-relaxed">说明：起始日之前月份显示"未入职"且不计薪计税；起始日当月按之后实际出勤折算薪资，减除费用仍按整月5000；切换年份时各年独立配置。五险一金按月薪基数计缴，基数超过封顶线时按封顶线计缴；封顶线按年份独立存储，调整前/调整月/调整后逐年配置，切到下一年时"调整前"自动继承上一年的"调整后"。社保缴费基数 = 当年月薪基数，超过封顶线时按封顶线计缴、低于则按实际，税卡中实时显示；每逢调整月自动切换为"调整后"封顶线，调整月份每年独立设置、各年互不影响。年终奖按入职比例折算（实际基数累计 ÷ 12×月薪），对比单独/合并两种计税方式。</p>
                 </div>
             </div>
 
@@ -442,17 +442,27 @@
         if (!taxConfig.insuranceCapRulesByYear) taxConfig.insuranceCapRulesByYear = {};
         if (!taxConfig.insuranceCapRulesByYear[y]) taxConfig.insuranceCapRulesByYear[y] = {};
         Object.assign(taxConfig.insuranceCapRulesByYear[y], patch);
+        // 跨年衔接：下一年"调整前" = 本年"调整后"；本年"调整前" = 上一年"调整后"（双向同步）
+        if ('capAfter' in patch) {
+            const next = taxConfig.insuranceCapRulesByYear[y + 1];
+            if (next) next.cap = patch.capAfter;
+        }
+        if ('cap' in patch) {
+            const prev = taxConfig.insuranceCapRulesByYear[y - 1];
+            if (prev) prev.capAfter = patch.cap;
+        }
         saveTaxConfig();
     }
 
-    // 切到某年时播种该年规则：调整前封顶线自动继承上一年"调整后"的值（无则沿用上一年调整前），调整月份同上一年，调整后留空待填
+    // 切到某年时播种该年规则：调整前封顶线自动继承上一年"调整后"（无则沿用上一年调整前）
+    // 调整月份按年独立存储，不继承
     function ensureInsuranceCapRule(y) {
         if (!taxConfig.insuranceCapRulesByYear) taxConfig.insuranceCapRulesByYear = {};
         if (taxConfig.insuranceCapRulesByYear[y]) return;
         const prev = taxConfig.insuranceCapRulesByYear[y - 1];
         if (prev) {
             const carried = (prev.capAfter > 0) ? prev.capAfter : (prev.cap > 0 ? prev.cap : 0);
-            taxConfig.insuranceCapRulesByYear[y] = { cap: carried, adjustMonth: prev.adjustMonth || 0, capAfter: 0 };
+            taxConfig.insuranceCapRulesByYear[y] = { cap: carried, adjustMonth: 0, capAfter: 0 };
         }
     }
 
@@ -744,75 +754,6 @@
         return total / 12;
     }
 
-    // 计算"上一年度税前月平均工资性收入"（非入职年的社保缴费基数依据）
-    // 复刻渲染日循环的收入口径：节假日/补班/出勤模式/手动修正/请假逐日模拟；仅取有收入的月份求平均
-    function computePriorYearAvgIncome() {
-        const joinYear = getJoinYear();
-        const y = currentYear - 1;
-        if (joinYear === null || y < joinYear) return null;   // 上一年未入职 → 无往年收入
-        const data = holidayDataByYear[y];
-        if (!data) return null;                               // 上一年节假日数据未就绪（加载后重渲染）
-        const mode = document.getElementById('mode').value;
-        const sd = getStartDate(y);
-        const startM = parseInt(sd.substring(5, 7), 10);      // 起始月（1-12）
-        const incomes = [];
-        for (let m = 0; m < 12; m++) {
-            const month = m + 1;
-            if (month < startM) { incomes.push(0); continue; }
-            const effBase = getEffectiveBase(month, y);
-            let salaryDays = 0, weekdayHolidayDays = 0, effStandardWork = 0, effOvertime = 0, dayLeaveCount = 0, leaveHours = 0;
-            const totalDays = new Date(y, m + 1, 0).getDate();
-            for (let d = 1; d <= totalDays; d++) {
-                const dateStr = `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-                const holidayName = data.holidayMap.get(dateStr);
-                const extraName = data.extraMap.get(dateStr);
-                const dayOfWeek = new Date(y, m, d).getDay();
-                const isWknd = (dayOfWeek === 0 || dayOfWeek === 6);
-                if (!isWknd) { salaryDays++; if (holidayName) weekdayHolidayDays++; }
-                else if (extraName) salaryDays++;
-
-                let status = 'work', isWorking = true;
-                if (holidayName) { status = 'holiday'; isWorking = false; }
-                else if (extraName) { status = 'extra'; isWorking = true; }
-                else {
-                    const isSunAfterExtraSat = (mode === 'sun' && dayOfWeek === 0 && (() => {
-                        const prev = new Date(y, m, d - 1);
-                        const prevStr = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}-${String(prev.getDate()).padStart(2, '0')}`;
-                        return data.extraMap.has(prevStr);
-                    })());
-                    if (isSunAfterExtraSat) { status = 'weekend-off'; isWorking = false; }
-                    else if ((mode === 'sat' && dayOfWeek === 6) || (mode === 'sun' && dayOfWeek === 0) || mode === 'none') { status = 'overtime'; isWorking = true; }
-                    else { status = 'weekend-off'; isWorking = false; }
-                }
-                const manual = manualOt[dateStr];
-                if (manual) { status = manual; isWorking = (manual === 'overtime'); }
-                const leaveRec = leaveMap[dateStr];
-                if (leaveRec && (status === 'work' || status === 'extra' || status === 'overtime')) {
-                    if (leaveRec.type === 'day') { status = 'leave'; isWorking = false; }
-                    else leaveHours += computeLeaveMinutes(leaveRec.start, leaveRec.end) / 60;
-                }
-
-                const isAfterStart = (month !== startM) || (dateStr >= sd);
-                if (isWorking && isAfterStart) {
-                    if (status === 'work' || status === 'extra') effStandardWork++;
-                    if (status === 'overtime') effOvertime++;
-                }
-                if (status === 'leave') dayLeaveCount++;
-            }
-            const statute = data.stat[`${y}-${m}`] || 0;      // 法定节日常数校正月计薪天数
-            salaryDays += statute - weekdayHolidayDays;
-
-            const wage = salaryDays ? (effBase / salaryDays) : 0;
-            const isStartMonth = (month === startM);
-            const monthBase = isStartMonth ? (wage * effStandardWork) : effBase;
-            const leaveDeduction = (isStartMonth ? 0 : dayLeaveCount) * wage + leaveHours * (wage / LEAVE_PAID_HOURS);
-            incomes.push(Math.max(0, monthBase + wage * effOvertime - leaveDeduction));
-        }
-        const worked = incomes.filter(v => v > 0);
-        if (!worked.length) return null;
-        return worked.reduce((s, v) => s + v, 0) / worked.length;
-    }
-
     // 界面参数持久化（月薪基数、薪资展示、出勤模式、年份、周起始）
     const uiSettings = {
         baseSalary: 10000,
@@ -920,7 +861,7 @@
     // 累计预扣法计算12个月税额（基于起始记薪计税日）
     // monthlyIncomes: 含加班费的总收入（用于计税收入）
     // salaryBase:     用户输入的月薪基数（用于五险一金基数，固定值不折算）
-    function calcCumulativeTax(monthlyIncomes, salaryBase, startDateStr, priorAvgIncome) {
+    function calcCumulativeTax(monthlyIncomes, salaryBase, startDateStr) {
         const { insuranceRate, specialDeduction } = taxConfig;
         // 起始日的月份（1-12）
         const startMonth = parseInt(startDateStr.substring(5, 7), 10);
@@ -951,9 +892,8 @@
             let tax = 0, rate = 0, quick = 0, taxable = 0, ins = 0, insBase = 0, insCap = 0, insCapped = false;
             if (income > 0) {
                 cumIncome += income;
-                // 缴费基数：入职当年按当年月薪基数；非入职年按上一年度税前月平均工资性收入；超过封顶线按封顶线
-                const joinYear = getJoinYear();
-                insBase = (joinYear !== null && joinYear < currentYear && priorAvgIncome != null) ? priorAvgIncome : salaryBase;
+                // 缴费基数 = 当年月薪基数；超过封顶线时按封顶线计缴
+                insBase = salaryBase;
                 insCap = getInsuranceCap(monthIdx);
                 if (insCap > 0 && insBase > insCap) { insBase = insCap; insCapped = true; }
                 ins = insBase * insuranceRate;
@@ -997,20 +937,20 @@
 
     // 年终奖合并计税：将奖金并入 12 月综合所得重算累计预扣，
     // 返回含奖金的年度总税额（调用方需减去原年度总税额得到增量）
-    function calcBonusCombinedTax(monthlyIncomes, salaryBase, startDateStr, bonus, priorAvgIncome) {
+    function calcBonusCombinedTax(monthlyIncomes, salaryBase, startDateStr, bonus) {
         if (bonus <= 0) {
-            const r = calcCumulativeTax(monthlyIncomes, salaryBase, startDateStr, priorAvgIncome);
+            const r = calcCumulativeTax(monthlyIncomes, salaryBase, startDateStr);
             return r.reduce((s, x) => s + x.tax, 0);
         }
         const startMonth = parseInt(startDateStr.substring(5, 7), 10); // 1-12
         // 12 月未入职：无法并入，返回原总税（合并计税不可用）
         if (startMonth > 12) {
-            const r = calcCumulativeTax(monthlyIncomes, salaryBase, startDateStr, priorAvgIncome);
+            const r = calcCumulativeTax(monthlyIncomes, salaryBase, startDateStr);
             return r.reduce((s, x) => s + x.tax, 0);
         }
         const newIncomes = monthlyIncomes.slice();
         newIncomes[11] = (newIncomes[11] || 0) + bonus;
-        const newResults = calcCumulativeTax(newIncomes, salaryBase, startDateStr, priorAvgIncome);
+        const newResults = calcCumulativeTax(newIncomes, salaryBase, startDateStr);
         return newResults.reduce((s, r) => s + r.tax, 0);
     }
 
@@ -1099,9 +1039,6 @@
         document.getElementById('statYearLabel').innerText = y;
         document.getElementById('bgYearDisplay').innerText = y;
         const ok = await ensureHolidayData(y);
-        // 上一年度数据（供社保缴费基数"上一年度月均工资性收入"计算）：入职年内无上一年
-        const joinYear = getJoinYear();
-        if (joinYear !== null && y - 1 >= joinYear) await ensureHolidayData(y - 1);
         setHolidayHint(!ok);   // 无数据且无缓存时给出可见提示
         useHolidayDataForYear(y);
         render();
@@ -1283,9 +1220,8 @@
             monthlyData.push({ m, days, totalIncome, wage, overtimePay, mCounts });
         }
 
-        // 一次性计算12个月的累计预扣税额（传入起始日、月薪基数、上一年度月均工资性收入）
-        const priorAvgIncome = showSalary ? computePriorYearAvgIncome() : null;
-        const taxResults = showSalary ? calcCumulativeTax(monthlyIncomes, salaryBase, startDateStr, priorAvgIncome) : new Array(12).fill(null);
+        // 一次性计算12个月的累计预扣税额（传入起始日、月薪基数）
+        const taxResults = showSalary ? calcCumulativeTax(monthlyIncomes, salaryBase, startDateStr) : new Array(12).fill(null);
 
         // 渲染当前活动月份详情
         const active = monthlyData[activeMonth];
@@ -1388,7 +1324,7 @@
             if (decNotJoined) {
                 combinedAvailable = false;
             } else {
-                const combinedTotalTax = calcBonusCombinedTax(monthlyIncomes, salaryBase, startDateStr, bonusAmount, priorAvgIncome);
+                const combinedTotalTax = calcBonusCombinedTax(monthlyIncomes, salaryBase, startDateStr, bonusAmount);
                 combinedBonusTax = Math.max(0, combinedTotalTax - baseTotalTax);
             }
             const combinedAfterTax = bonusAmount - combinedBonusTax;
