@@ -1115,7 +1115,7 @@
         else annualGrid.className = "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-10 max-w-4xl mx-auto";
 
         container.innerHTML = '';
-        let yStats = { baseSum:0, otSum:0, standardWork:0, overtimeWork:0, effStandardWork:0, effOvertime:0, weekendOff:0, holidayOff:0 };
+        let yStats = { baseSum:0, otSum:0, leaveDeduction:0, standardWork:0, overtimeWork:0, effStandardWork:0, effOvertime:0, weekendOff:0, holidayOff:0 };
         const monthlyIncomes = new Array(12).fill(0);
         const monthlyData = [];
 
@@ -1230,6 +1230,7 @@
 
             monthlyIncomes[m] = totalIncome;
             yStats.baseSum += monthBase; yStats.otSum += overtimePay;
+            yStats.leaveDeduction += leaveDeduction;
             yStats.standardWork += mCounts.standardWork; yStats.overtimeWork += mCounts.overtimeWork;
             yStats.effStandardWork += mCounts.effStandardWork; yStats.effOvertime += mCounts.effOvertime;
             yStats.weekendOff += mCounts.weekendOff; yStats.holidayOff += mCounts.holidayOff;
@@ -1353,12 +1354,13 @@
             const recBonusTax = combinedAvailable && !separateIsBetter ? combinedBonusTax : separate.tax;
             const recBonusAfterTax = Math.max(0, bonusAmount - recBonusTax);
 
-            // —— 年度明细统计（含年终奖）——
-            const totalIncome = yStats.baseSum + yStats.otSum + bonusAmount;
+            // —— 年度明细统计（含年终奖，扣除请假扣薪）——
+            const grossMonthlyTotal = yStats.baseSum + yStats.otSum - yStats.leaveDeduction;
+            const totalIncome = grossMonthlyTotal + bonusAmount;
             const totalTax = baseTotalTax + recBonusTax;
             const totalAfterTax = baseAfterTax + recBonusAfterTax;
             document.getElementById('yearTotalIncome').innerText = `¥${totalIncome.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
-            document.getElementById('yearBaseSub').innerText = `+¥${yStats.baseSum.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+            document.getElementById('yearBaseSub').innerText = `+¥${(yStats.baseSum - yStats.leaveDeduction).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
             document.getElementById('yearOtSub').innerText = `+¥${yStats.otSum.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
             document.getElementById('yearBonusSub').innerText = `+¥${bonusAmount.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
             document.getElementById('yearInsuranceSub').innerText = `-¥${totalIns.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
@@ -1372,9 +1374,9 @@
             const avgFmt = (val) => val.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
             const includeBonus = uiSettings.includeBonusInDaily;
             // 月薪 & 日薪：根据勾选决定是否含年终奖
-            const monthlyPretax = includeBonus ? totalIncome : (yStats.baseSum + yStats.otSum);
+            const monthlyPretax = includeBonus ? totalIncome : grossMonthlyTotal;
             const monthlyAftertax = includeBonus ? totalAfterTax : baseAfterTax;
-            const dailyPretax = includeBonus ? totalIncome : (yStats.baseSum + yStats.otSum);
+            const dailyPretax = includeBonus ? totalIncome : grossMonthlyTotal;
             const dailyAftertax = includeBonus ? totalAfterTax : baseAfterTax;
             document.getElementById('yearAvgPretaxMonthly').innerText = `¥${avgFmt(monthlyPretax / monthsWorked)}`;
             document.getElementById('yearAvgAftertaxMonthly').innerText = `¥${avgFmt(monthlyAftertax / monthsWorked)}`;
