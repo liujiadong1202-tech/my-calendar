@@ -387,7 +387,7 @@
                 <div id="calendarHeader" class="calendar-grid mb-2 text-center text-[10px] font-bold text-slate-300 select-none" title="点击切换周起始日"></div>
                 <div id="calendarGrid" class="calendar-grid"></div>
                 <div class="flex flex-wrap items-center justify-between gap-2 mt-3 text-[9px] font-bold text-slate-400">
-                    <span>上班/调休补班/加班日点击弹出请假窗口（<span class="inline-block w-2 h-2 rounded border" style="border-color:#f472b6"></span>粉色边框 = 有请假记录）；休息日/法定节假日不可操作</span>
+                    <span>上班/调休补班/加班日点击弹出请假窗口（<span class="inline-block w-2 h-2 rounded border" style="border-color:#f472b6"></span>粉色边框 = 有请假记录）；休息日点击可标记加班/取消加班（按 1 天日薪结算）；法定节假日不可操作</span>
                     <div class="flex gap-2 shrink-0">
                         <button id="resetMonthManual" type="button" class="bg-slate-100 hover:bg-slate-200 text-slate-500 px-2 py-1 rounded-lg transition">重置本月</button>
                         <button id="resetYearManual" type="button" class="bg-slate-100 hover:bg-slate-200 text-slate-500 px-2 py-1 rounded-lg transition">重置本年</button>
@@ -709,6 +709,12 @@
                 <span class="text-[10px] font-bold text-pink-600">${desc}</span>
                 <button data-act="clearleave" class="text-[9px] font-bold bg-white hover:bg-pink-100 text-pink-500 border border-pink-200 rounded px-1.5 py-0.5 transition">取消</button>
             </div>`;
+        } else if (day.status === 'weekend-off') {
+            const isOtManual = manualOt[day.dateStr] === 'overtime';
+            html += `
+            <div class="text-[9px] font-bold text-slate-400 uppercase mb-1">加班</div>
+            <button data-act="${isOtManual ? 'ot-off' : 'ot-on'}" class="w-full py-1.5 rounded-lg text-[10px] font-bold ${isOtManual ? 'bg-blue-100 hover:bg-blue-200 text-blue-600 border border-blue-200' : 'bg-blue-500 hover:bg-blue-600 text-white'} transition mb-2">${isOtManual ? '取消加班（恢复休息）' : '这天加班（按 1 天日薪结算）'}</button>
+            <p class="text-[8px] text-slate-400 leading-relaxed">休息日到岗加班按 1 天日薪计发加班费，不影响计薪天数；取消后恢复为休息。</p>`;
         } else {
             html += `
             <div class="text-[9px] font-bold text-slate-400 uppercase mb-1">请假</div>
@@ -721,6 +727,11 @@
             </div>
             <p class="text-[8px] text-slate-400 leading-relaxed">上班 11:00-20:00，12:00-13:00 / 18:00-19:00 为休息。跨休息段的请假不扣休息时间薪资；每天计薪 7 小时，小时薪 = 日薪 ÷ 7</p>`;
         }
+        if (manualOt[day.dateStr] === 'overtime' && day.status !== 'weekend-off') {
+            html += `
+            <div class="text-[9px] font-bold text-slate-400 uppercase mb-1 mt-3">加班</div>
+            <button data-act="ot-off" class="w-full py-1 rounded-lg text-[10px] font-bold bg-blue-100 hover:bg-blue-200 text-blue-600 border border-blue-200 transition">取消加班（恢复休息）</button>`;
+        }
         html += `<button data-act="close" class="w-full py-1 rounded-lg text-[10px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-500 transition mt-3">关闭</button>`;
         panel.innerHTML = html;
         panel.querySelectorAll('[data-act]').forEach(btn => {
@@ -730,6 +741,8 @@
                 if (act === 'leave-day') applyLeave(day.dateStr, 'day');
                 else if (act === 'leave-hours') applyLeave(day.dateStr, 'hours', document.getElementById('leaveStart').value, document.getElementById('leaveEnd').value);
                 else if (act === 'clearleave') clearLeave(day.dateStr);
+                else if (act === 'ot-on') { manualOt[day.dateStr] = 'overtime'; saveManualOt(); render(); closeDayModal(); }
+                else if (act === 'ot-off') { delete manualOt[day.dateStr]; saveManualOt(); render(); closeDayModal(); }
                 else closeDayModal();
             };
         });
@@ -1577,10 +1590,11 @@
         days.forEach(day => {
             const cell = document.createElement('div');
             const canLeave = ['work', 'extra', 'overtime', 'leave'].includes(day.status);
-            cell.className = `day-cell status-${day.status} ${day.isToday ? 'today-mark' : ''} ${day.isStartDate ? 'start-date-mark' : ''} ${day.isLeave ? 'leave-mark' : ''} ${canLeave ? 'day-toggleable' : ''} ${day.isManual ? 'manual-mark' : ''}`;
+            const canClick = canLeave || day.status === 'weekend-off';
+            cell.className = `day-cell status-${day.status} ${day.isToday ? 'today-mark' : ''} ${day.isStartDate ? 'start-date-mark' : ''} ${day.isLeave ? 'leave-mark' : ''} ${canClick ? 'day-toggleable' : ''} ${day.isManual ? 'manual-mark' : ''}`;
             cell.innerHTML = `<span class="day-num">${day.d}</span><span class="day-tag">${day.isStartDate ? '入职' : day.label}</span>`;
-            if (canLeave) {
-                cell.title = '点击弹出请假窗口';
+            if (canClick) {
+                cell.title = day.status === 'weekend-off' ? '点击标记加班 / 取消加班（按 1 天日薪）' : '点击弹出请假窗口';
                 cell.onclick = () => openDayModal(day);
             }
             grid.appendChild(cell);
