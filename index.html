@@ -909,6 +909,21 @@
         return taxBrackets.find(b => taxable <= b[0]);
     }
 
+    // 按月换算后的综合所得税率表（年终奖单独计税用）[月均上限, 税率, 速算扣除数]
+    const monthlyTaxBrackets = [
+        [3000, 0.03, 0],
+        [12000, 0.10, 210],
+        [25000, 0.20, 1410],
+        [35000, 0.25, 2660],
+        [55000, 0.30, 4410],
+        [80000, 0.35, 7160],
+        [Infinity, 0.45, 15160]
+    ];
+
+    function getMonthlyTaxBracket(monthlyTaxable) {
+        return monthlyTaxBrackets.find(b => monthlyTaxable <= b[0]);
+    }
+
     // 累计预扣法计算12个月税额（基于起始记薪计税日）
     // monthlyIncomes: 含加班费的总收入（用于计税收入）
     // salaryBase:     用户输入的月薪基数（无 baseOfMonth 时的兜底五险基数）
@@ -941,8 +956,9 @@
                 continue;
             }
 
-            // 起始月及之后：正常累计预扣
+            // 起始月及之后：正常累计预扣（减除费用/专项附加按在职月份累计，与当月是否有收入无关）
             let tax = 0, rate = 0, quick = 0, taxable = 0, ins = 0, insBase = 0, insCap = 0, insCapped = false;
+            cumDeduction += 5000 + specialDeduction;
             if (income > 0) {
                 cumIncome += income;
                 // 缴费基数 = 当月实际月薪基数（含当年涨薪）；超过封顶线时按封顶线计缴
@@ -951,15 +967,14 @@
                 if (insCap > 0 && insBase > insCap) { insBase = insCap; insCapped = true; }
                 ins = insBase * insuranceRate;
                 cumIns += ins;
-                cumDeduction += 5000 + specialDeduction;
-                taxable = cumIncome - cumIns - cumDeduction;
-                if (taxable > 0) {
-                    const bracket = getTaxBracket(taxable);
-                    rate = bracket[1]; quick = bracket[2];
-                    tax = Math.max(0, taxable * rate - quick - paidTax);
-                }
-                paidTax += tax;
             }
+            taxable = cumIncome - cumIns - cumDeduction;
+            if (taxable > 0) {
+                const bracket = getTaxBracket(taxable);
+                rate = bracket[1]; quick = bracket[2];
+                tax = Math.max(0, taxable * rate - quick - paidTax);
+            }
+            paidTax += tax;
 
             results.push({
                 tax,
@@ -979,11 +994,11 @@
         return results;
     }
 
-    // 年终奖单独计税：奖金 ÷ 12 找档，再乘以奖金总额
+    // 年终奖单独计税：奖金 ÷ 12 查"按月换算后的综合所得税率表"，再乘以奖金总额
     function calcBonusSeparateTax(bonus) {
         if (bonus <= 0) return { tax: 0, rate: 0, quick: 0, afterTax: 0 };
         const monthly = bonus / 12;
-        const bracket = getTaxBracket(monthly);
+        const bracket = getMonthlyTaxBracket(monthly);
         const tax = Math.max(0, bonus * bracket[1] - bracket[2]);
         return { tax, rate: bracket[1], quick: bracket[2], afterTax: bonus - tax };
     }
