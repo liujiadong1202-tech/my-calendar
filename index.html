@@ -133,7 +133,7 @@
                             <input type="number" id="bonusMultiplier" value="2" min="0" step="0.5" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-700 focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none">
                         </div>
                     </div>
-                    <p class="text-[9px] text-slate-400 mt-2 leading-relaxed">说明：起始日之前月份显示"未入职"且不计薪计税；起始日当月按之后实际出勤折算薪资，减除费用仍按整月5000；切换年份时各年独立配置。五险一金按月薪基数计缴，基数超过封顶线时按封顶线计缴；封顶线按年份独立存储，调整前/调整月/调整后逐年配置，切到下一年时"调整前"自动等于上一年的"年度最终封顶线"。社保缴费基数 = 当月月薪基数（含涨薪后），超过封顶线时按封顶线计缴、低于则按实际，税卡中实时显示。封顶线按年独立存储：调整月份选"不调整"时全年使用同一封顶线（不涉及调整后）；设置调整月份后，自该月起改用"调整后"封顶线（0=沿用原封顶线），"调整前/调整后"跨年双向同步，调整月份每年独立设置、各年互不影响。年终奖按入职比例折算（实际基数累计 ÷ 12×月薪），对比单独/合并两种计税方式。</p>
+                    <p class="text-[9px] text-slate-400 mt-2 leading-relaxed">说明：起始日之前月份显示"未入职"且不计薪计税；起始日当月按之后实际出勤折算薪资，减除费用仍按整月5000；切换年份时各年独立配置。五险一金按月薪基数计缴，基数超过封顶线时按封顶线计缴；封顶线按年份独立存储，调整前/调整月/调整后逐年配置，切到下一年时"调整前"自动等于上一年的"年度最终封顶线"。社保缴费基数 = 当月月薪基数（含涨薪后），超过封顶线时按封顶线计缴、低于则按实际，税卡中实时显示。封顶线按年独立存储：调整月份选"不调整"时全年使用同一封顶线（不涉及调整后）；设置调整月份后，自该月起改用"调整后"封顶线（0=沿用原封顶线），"调整前/调整后"跨年双向同步，调整月份每年独立设置、各年互不影响。年终奖 = 在职期间平均月薪 × 系数 × 在职比例（入职当月按日期比例折算为小数月、未入职月份不计、涨薪后按分段月薪加权），对比单独/合并两种计税方式。</p>
                 </div>
             </div>
 
@@ -225,7 +225,7 @@
                             </div>
                         </div>
                         <div class="flex flex-wrap items-center justify-between gap-2 mt-3">
-                            <p id="avgNote" class="text-[9px] opacity-50">月薪按12个月均摊；日薪按实际出勤天数均摊（不含年终奖）</p>
+                            <p id="avgNote" class="text-[9px] opacity-50">月薪按实际在职月数均摊（入职当月按日期比例折算）；日薪按实际出勤天数均摊（不含年终奖）</p>
                             <label class="flex items-center gap-1.5 cursor-pointer select-none">
                                 <span class="text-[9px] opacity-50">年终奖计入日薪</span>
                                 <input type="checkbox" id="includeBonusInDaily" class="w-3.5 h-3.5 text-emerald-500 rounded focus:ring-emerald-400 cursor-pointer">
@@ -777,11 +777,32 @@
         return base;
     }
 
-    // 计算当年平均月薪基数（用于年终奖计算）
-    function calcAvgMonthlyBase() {
-        let total = 0;
-        for (let m = 1; m <= 12; m++) total += getEffectiveBase(m);
-        return total / 12;
+    // 当年实际在职月数：入职当月按入职日期折算为小数月（其他年份=12个月）
+    function calcWorkedMonths(year = currentYear) {
+        const joinYear = getJoinYear();
+        if (joinYear === null || year > joinYear) return 12;
+        if (year < joinYear) return 0;
+        const sd = getStartDate(year);
+        const joinMonth = parseInt(sd.substring(5, 7), 10) - 1;   // 0-11
+        const joinDay = parseInt(sd.substring(8, 10), 10);        // 1-31
+        const monthDays = new Date(year, joinMonth + 1, 0).getDate();
+        const fraction = Math.max(0, Math.min(1, (monthDays - joinDay + 1) / monthDays));
+        return (11 - joinMonth) + fraction;
+    }
+
+    // 当年平均月薪基数（用于年终奖计算）：只统计实际在职月份
+    // joinMonthIdx：入职当年传入入职月（0-11），其他年份传 null
+    // joinFraction：入职当月折算比例（0-1），其他月份按整月 1
+    function calcAvgMonthlyBase(joinMonthIdx = null, joinFraction = 1) {
+        let sum = 0, weightSum = 0;
+        for (let m = 1; m <= 12; m++) {
+            if (joinMonthIdx !== null && m < joinMonthIdx + 1) continue;  // 入职前月份不计
+            const w = (joinMonthIdx !== null && m === joinMonthIdx + 1) ? joinFraction : 1;
+            if (w <= 0) continue;
+            sum += getEffectiveBase(m) * w;
+            weightSum += w;
+        }
+        return weightSum > 0 ? sum / weightSum : 0;
     }
 
     // 界面参数持久化（月薪基数、薪资展示、出勤模式、年份、周起始）
@@ -892,7 +913,8 @@
     // monthlyIncomes: 含加班费的总收入（用于计税收入）
     // salaryBase:     用户输入的月薪基数（无 baseOfMonth 时的兜底五险基数）
     // baseOfMonth:    可选，函数(月份1-12) 返回该月实际月薪基数（含当年涨薪），用于五险一金基数与封顶判断
-    function calcCumulativeTax(monthlyIncomes, salaryBase, startDateStr, baseOfMonth) {
+    // notJoined:      true 时全年视为未入职（早于入职年份）
+    function calcCumulativeTax(monthlyIncomes, salaryBase, startDateStr, baseOfMonth, notJoined = false) {
         const { insuranceRate, specialDeduction } = taxConfig;
         // 起始日的月份（1-12）
         const startMonth = parseInt(startDateStr.substring(5, 7), 10);
@@ -903,8 +925,8 @@
             const monthIdx = i + 1;
             const income = monthlyIncomes[i] || 0;
 
-            // 起始月之前：不参与累计，税额=0，税后=税前（薪资已是0）
-            if (monthIdx < startMonth) {
+            // 起始月之前（或整个年份未入职）：不参与累计，税额=0，税后=税前（薪资已是0）
+            if (notJoined || monthIdx < startMonth) {
                 results.push({
                     tax: 0,
                     afterTax: income,
@@ -1133,7 +1155,8 @@
         const monthlyIncomes = new Array(12).fill(0);
         const monthlyData = [];
 
-        // 获取当前年份的起始记薪计税日
+        // 获取当前年份的起始记薪计税日（早于入职年份的年份视为全年未入职）
+        const notYetJoined = getJoinYear() !== null && currentYear < getJoinYear();
         const startDateStr = getStartDate(currentYear);
 
         for (let m = 0; m < 12; m++) {
@@ -1232,16 +1255,17 @@
 
             // 日薪计算方式不变（分母为全月计薪天数 salaryDays）
             const effectiveBase = getEffectiveBase(m + 1);
-            const wage = mCounts.salaryDays ? (effectiveBase / mCounts.salaryDays) : 0;
+            const wage = notYetJoined ? 0 : (mCounts.salaryDays ? (effectiveBase / mCounts.salaryDays) : 0);
             const overtimePay = wage * mCounts.effOvertime;
 
             // 分场景计算基本薪资
             const startDateMonth = parseInt(startDateStr.substring(5, 7), 10) - 1; // 0-11
             const isBeforeStart = (m < startDateMonth);           // 起始日之前月（未入职）
             const isStartMonth = (m === startDateMonth);          // 起始日所在月（按日折算）
-            const monthBase = isBeforeStart ? 0
+            const monthBase = notYetJoined ? 0
+                            : (isBeforeStart ? 0
                             : (isStartMonth ? (wage * mCounts.effStandardWork)
-                                            : effectiveBase);
+                                            : effectiveBase));
             // 请假扣薪：全天请假=1天日薪；小时请假=小时薪（日薪÷7，休息时间不计入请假时长）
             // 入职当月已按实际出勤折算（全天请假未计入 effStandardWork），不再重复扣
             const leaveDeduction = (isStartMonth ? 0 : mCounts.dayLeaveCount) * wage
@@ -1260,7 +1284,7 @@
 
         // 一次性计算12个月的累计预扣税额（传入起始日、月薪基数；五险基数按月取当月实际月薪基数）
         const baseOfMonth = (mi) => getEffectiveBase(mi);
-        const taxResults = showSalary ? calcCumulativeTax(monthlyIncomes, salaryBase, startDateStr, baseOfMonth) : new Array(12).fill(null);
+        const taxResults = showSalary ? calcCumulativeTax(monthlyIncomes, salaryBase, startDateStr, baseOfMonth, notYetJoined) : new Array(12).fill(null);
 
         // 渲染当前活动月份详情
         const active = monthlyData[activeMonth];
@@ -1346,18 +1370,27 @@
             const totalIns = taxResults.reduce((s, r) => s + (r ? r.insurance : 0), 0);
             const baseAfterTax = taxResults.reduce((s, r, i) => s + (r ? r.afterTax : monthlyIncomes[i]), 0);
 
-            // —— 年终奖计算（以当年平均月薪基数为基准）——
+            // —— 在职月数：入职当年按入职日期折算为小数月（月中入职不再按整月计）——
+            let workedMonths = calcWorkedMonths(currentYear);
+            let joinMonthIdx = null, joinFraction = 1;
+            const joinY = getJoinYear();
+            if (joinY !== null && currentYear === joinY) {
+                joinMonthIdx = parseInt(startDateStr.substring(5, 7), 10) - 1;
+                const joinDay = parseInt(startDateStr.substring(8, 10), 10);
+                const mdays = new Date(currentYear, joinMonthIdx + 1, 0).getDate();
+                joinFraction = Math.max(0, Math.min(1, (mdays - joinDay + 1) / mdays));
+            }
+
+            // —— 年终奖计算（以在职期间的平均月薪基数为基准）——
             const multiplier = taxConfig.bonusMultiplier;
-            const avgMonthlyBase = calcAvgMonthlyBase();
-            const startMonthIdx = parseInt(startDateStr.substring(5, 7), 10) - 1;
-            const monthsWorked = Math.max(1, 12 - startMonthIdx);
-            const prorationRatio = monthsWorked / 12;
+            const avgMonthlyBase = calcAvgMonthlyBase(joinMonthIdx, joinFraction);
+            const prorationRatio = Math.min(1, workedMonths / 12);
             const bonusAmount = avgMonthlyBase * multiplier * prorationRatio;
 
             // 单独计税
             const separate = calcBonusSeparateTax(bonusAmount);
             // 合并计税（增量 = 含奖金年度总税 - 原年度总税）
-            const decNotJoined = (parseInt(startDateStr.substring(5, 7), 10) > 12) || (monthlyIncomes[11] || 0) === 0;
+            const decNotJoined = notYetJoined || (parseInt(startDateStr.substring(5, 7), 10) > 12) || (monthlyIncomes[11] || 0) === 0;
             let combinedBonusTax = 0;
             let combinedAvailable = true;
             if (decNotJoined) {
@@ -1399,12 +1432,17 @@
             const monthlyAftertax = includeBonus ? totalAfterTax : baseAfterTax;
             const dailyPretax = includeBonus ? totalIncome : grossMonthlyTotal;
             const dailyAftertax = includeBonus ? totalAfterTax : baseAfterTax;
-            document.getElementById('yearAvgPretaxMonthly').innerText = `¥${avgFmt(monthlyPretax / monthsWorked)}`;
-            document.getElementById('yearAvgAftertaxMonthly').innerText = `¥${avgFmt(monthlyAftertax / monthsWorked)}`;
+            const monthsForAvg = workedMonths > 0 ? workedMonths : 1;
+            document.getElementById('yearAvgPretaxMonthly').innerText = `¥${avgFmt(monthlyPretax / monthsForAvg)}`;
+            document.getElementById('yearAvgAftertaxMonthly').innerText = `¥${avgFmt(monthlyAftertax / monthsForAvg)}`;
             document.getElementById('yearAvgPretaxDaily').innerText = `¥${effWorkDays > 0 ? avgFmt(dailyPretax / effWorkDays) : '0'}`;
             document.getElementById('yearAvgAftertaxDaily').innerText = `¥${effWorkDays > 0 ? avgFmt(dailyAftertax / effWorkDays) : '0'}`;
             // 更新说明文字
-            document.getElementById('avgNote').innerText = `月薪按${monthsWorked}个月均摊；日薪按${effWorkDays}天出勤均摊（${includeBonus ? '含' : '不含'}年终奖）`;
+            const workedMonthsText = workedMonths % 1 ? workedMonths.toFixed(1) : String(workedMonths);
+            const joinMonthNote = (joinMonthIdx !== null && joinFraction < 1) ? '（入职当月按日期比例折算）' : '';
+            document.getElementById('avgNote').innerText = workedMonths > 0
+                ? `月薪按${workedMonthsText}个月均摊${joinMonthNote}；日薪按${effWorkDays}天出勤均摊（${includeBonus ? '含' : '不含'}年终奖）`
+                : '未入职年份，无薪资统计';
 
             // —— 年终奖板块摘要 ——
             document.getElementById('bonusMultBadge').innerText = `×${multiplier}`;
@@ -1417,7 +1455,7 @@
                 pretaxBadge.classList.add('hidden');
             }
             const prorationBadge = document.getElementById('bonusProrationBadge');
-            if (prorationRatio < 0.999 && multiplier > 0) {
+            if (prorationRatio > 0 && prorationRatio < 0.999 && multiplier > 0) {
                 prorationBadge.classList.remove('hidden');
                 prorationBadge.innerText = `按入职比例折算 ${(prorationRatio * 100).toFixed(0)}%`;
             } else {
